@@ -30,7 +30,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     age = models.PositiveIntegerField(null=True)
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, null=True)
     joining_date = models.DateField(null=True)
-    available_time = models.TimeField(null=True)
+    available_time = models.JSONField(null=True)
     available_days = models.JSONField(null=True)  # e.g., ['mon', 'tue']
     contract = models.FileField(upload_to='contracts/', null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending', null=True)
@@ -63,3 +63,5 @@ class UserRole(models.Model):
 
     def __str__(self):
         return f"{self.user.name} - {self.role.rolename}"
+
+

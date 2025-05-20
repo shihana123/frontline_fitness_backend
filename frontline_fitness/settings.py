@@ -147,3 +147,5 @@ CORS_ALLOW_ALL_ORIGINS = True
 # ]
 
 AUTH_USER_MODEL = 'frontline_backend.User'
+
+APPEND_SLASH=False
