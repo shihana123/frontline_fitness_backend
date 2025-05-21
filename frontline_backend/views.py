@@ -4,8 +4,8 @@ from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer
+from .models import User, Role, UserRole, Program
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer
 
 class UserCreateView(generics.CreateAPIView):
     queryset = User.objects.all()
@@ -22,5 +22,27 @@ class UserListView(APIView):
         # users = User.objects.filter(status=True)
         users = User.objects.all()
         serializer = UserSerializer(users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class UsersByRoleView(APIView):
+    def get(self, request, role_id):
+        user_roles = UserRole.objects.filter(role__id=role_id).select_related('user', 'role')
+        users = [user_role.user for user_role in user_roles]
+        serializer = UserSerializer(users, many=True)
+        return Response(serializer.data)
+
+class ProgramCreateView(APIView):
+    def post(self, request):
+        serializer = ProgramCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Program created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class ProgramListView(APIView):
+    def get(self, request):
+        # users = User.objects.filter(status=True)
+        programs = Program.objects.all()
+        serializer = ProgramsSerializer(programs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

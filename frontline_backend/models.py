@@ -65,3 +65,24 @@ class UserRole(models.Model):
         return f"{self.user.name} - {self.role.rolename}"
 
 
+class Program(models.Model):
+    name = models.CharField(max_length=255)
+    program_type = models.JSONField(null=True, blank=True)
+    personal_select_days = models.JSONField(null=True, blank=True)
+
+    group_select_days_level1 = models.JSONField(null=True, blank=True)
+    group_select_time_level1 = models.JSONField(null=True, blank=True)
+    group_capacity_level1 = models.PositiveIntegerField(null=True, blank=True)
+    group_trainer_level1 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_1_programs')
+    
+    group_select_days_level2 = models.JSONField(null=True, blank=True)
+    group_select_time_level2 = models.JSONField(null=True, blank=True)
+    group_capacity_level2 = models.PositiveIntegerField(null=True, blank=True)
+    group_trainer_level2 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_2_programs')
+    
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+
+    def __str__(self):
+        return self.name
+
+

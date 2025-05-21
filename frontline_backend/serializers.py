@@ -1,7 +1,7 @@
 # users/serializers.py
 
 from rest_framework import serializers
-from .models import User, UserRole, Role
+from .models import User, UserRole, Role, Program
 
 class UserCreateSerializer(serializers.ModelSerializer):
     role_id = serializers.IntegerField(write_only=True)  # coming from frontend
@@ -46,6 +46,28 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'email', 'phone', 'roles']
 
     def get_roles(self, obj):
-        roles = UserRole.objects.filter(user=obj)
-        return UserRoleSerializer(roles, many=True).data
+        user_roles = UserRole.objects.filter(user=obj).select_related('role')
+        return UserRoleSerializer(user_roles, many=True).data
+    
+class ProgramCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Program
+        fields = '__all__'
+
+    # Optional: Validate that the trainers are users with proper roles if needed
+    def validate_group_trainer_level1(self, value):
+        if value and not User.objects.filter(id=value.id).exists():
+            raise serializers.ValidationError("Invalid group_trainer_level1 user.")
+        return value
+
+    def validate_group_trainer_level2(self, value):
+        if value and not User.objects.filter(id=value.id).exists():
+            raise serializers.ValidationError("Invalid group_trainer_level2 user.")
+        return value
+    
+
+class ProgramsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Program
+        fields = ['id', 'name', 'program_type']
 
