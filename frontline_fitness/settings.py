@@ -43,6 +43,9 @@ INSTALLED_APPS = [
     'frontline_backend',
     'corsheaders'
 ]
+REST_AUTH_SERIALIZERS = {
+    'USER_DETAILS_SERIALIZER': 'frontline_backend.serializers.CustomUserDetailsSerializer'
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -149,3 +152,14 @@ CORS_ALLOW_ALL_ORIGINS = True
 AUTH_USER_MODEL = 'frontline_backend.User'
 
 APPEND_SLASH=False
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework.authentication.TokenAuthentication',
+    ),
+}
+
+from django.conf import settings
+print("💬 REST_AUTH_SERIALIZERS in use:", getattr(settings, 'REST_AUTH_SERIALIZERS', 'Not Set'))
+
+

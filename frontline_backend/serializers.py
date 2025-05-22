@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from .models import User, UserRole, Role, Program
+from dj_rest_auth.serializers import UserDetailsSerializer
 
 class UserCreateSerializer(serializers.ModelSerializer):
     role_id = serializers.IntegerField(write_only=True)  # coming from frontend
@@ -44,6 +45,16 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'name', 'email', 'phone', 'roles']
+
+    def get_roles(self, obj):
+        user_roles = UserRole.objects.filter(user=obj).select_related('role')
+        return UserRoleSerializer(user_roles, many=True).data
+
+class CustomUserDetailsSerializer(serializers.ModelSerializer):
+    roles = serializers.SerializerMethodField()
+    class Meta:
+        model = User
+        fields = ['id', 'email', 'name', 'roles']
 
     def get_roles(self, obj):
         user_roles = UserRole.objects.filter(user=obj).select_related('role')
