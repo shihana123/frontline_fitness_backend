@@ -1,7 +1,7 @@
 # users/serializers.py
 
 from rest_framework import serializers
-from .models import User, UserRole, Role, Program
+from .models import User, UserRole, Role, Program, Client, ProgramClient
 from dj_rest_auth.serializers import UserDetailsSerializer
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -81,4 +81,20 @@ class ProgramsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
         fields = ['id', 'name', 'program_type']
+
+class ProgramClientSerializer(serializers.ModelSerializer):
+    program = ProgramsSerializer()
+
+    class Meta:
+        model = ProgramClient
+        fields = ['program', 'preferred_time', 'preferred_group_time', 'status']
+
+class NewClientSerializer(serializers.ModelSerializer):
+    programs = ProgramClientSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Client
+        fields = ['id', 'name', 'email', 'phone', 'new_client',
+                  'diet_first_consultation', 'trainer_first_consultation', 'programs']
+
 

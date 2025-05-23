@@ -1,5 +1,5 @@
 from django.db import models
-from .constants import GENDER_CHOICES, STATUS_CHOICES
+from .constants import GENDER_CHOICES, STATUS_CHOICES, CLIENT_STATUS_CHOICES
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 # Create your models here.
 class UserManager(BaseUserManager):
@@ -86,3 +86,27 @@ class Program(models.Model):
         return self.name
 
 
+class Client(models.Model):
+    name = models.CharField(max_length=255)
+    source = models.CharField(max_length=255)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20)
+    status = models.CharField(max_length=20, choices=CLIENT_STATUS_CHOICES)
+    new_client = models.BooleanField(default=True)
+    diet_first_consultation = models.BooleanField(default=False)
+    trainer_first_consultation = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+    
+
+class ProgramClient(models.Model):
+ 
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='programs')
+    program = models.ForeignKey('Program', on_delete=models.CASCADE, related_name='program_clients')
+    preferred_time = models.CharField(max_length=100, blank=True, null=True)
+    preferred_group_time = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+
+    def __str__(self):
+        return f"{self.client.name} - {self.program.name}"

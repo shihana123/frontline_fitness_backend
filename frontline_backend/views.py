@@ -4,8 +4,8 @@ from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer
+from .models import User, Role, UserRole, Program, Client
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer
 from dj_rest_auth.views import UserDetailsView
 
 class CustomUserDetailsView(UserDetailsView):
@@ -49,4 +49,10 @@ class ProgramListView(APIView):
         programs = Program.objects.all()
         serializer = ProgramsSerializer(programs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class NewClientListView(APIView):
+    def get(self, request):
+        clients = Client.objects.filter(new_client=True)
+        serializer = NewClientSerializer(clients, many=True)
+        return Response(serializer.data)
 

@@ -9,3 +9,10 @@ STATUS_CHOICES = [
     ('inactive', 'Inactive'),
     ('pending', 'Pending'),
 ]
+
+CLIENT_STATUS_CHOICES = [
+        ('lead', 'Lead'),
+        ('interested', 'Interested'),
+        ('converted', 'Converted'),
+        ('inactive', 'Inactive'),
+    ]
