@@ -1,8 +1,9 @@
 # users/serializers.py
 
 from rest_framework import serializers
-from .models import User, UserRole, Role, Program, Client, ProgramClient
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails
 from dj_rest_auth.serializers import UserDetailsSerializer
+from django.utils.timezone import localtime
 
 class UserCreateSerializer(serializers.ModelSerializer):
     role_id = serializers.IntegerField(write_only=True)  # coming from frontend
@@ -96,5 +97,54 @@ class NewClientSerializer(serializers.ModelSerializer):
         model = Client
         fields = ['id', 'name', 'email', 'phone', 'new_client',
                   'diet_first_consultation', 'trainer_first_consultation', 'programs']
+
+class ConsultationScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConsulationSchedules
+        fields = '__all__'
+
+class TrainerConsultationDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrainerConsultationDetails
+        fields = '__all__'
+
+class ClientSerializer(serializers.ModelSerializer):
+    programs = ProgramClientSerializer(many=True, read_only=True)
+    class Meta:
+        model = Client
+        fields = ['id', 'name', 'email', 'phone', 'status', 'programs']
+
+class ConsultationScheduleWithClientSerializer(serializers.ModelSerializer):
+    client = ClientSerializer()  # nested serializer
+    completed_consultations = serializers.SerializerMethodField()
+    last_consultation_datetime = serializers.SerializerMethodField()
+    last_consultation_user_id = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConsulationSchedules
+        fields = ['id', 'client', 'user', 'no_of_consultation', 'completed_consultations', 'datetime', 'type', 'status', 'created_at', 'last_consultation_datetime', 'last_consultation_user_id']
+
+    def get_completed_consultations(self, obj):
+        return max(obj.no_of_consultation - 1, 0)
+    
+    def get_last_consultation_datetime(self, obj):
+        last = ConsulationSchedules.objects.filter(
+            client=obj.client,
+            user=obj.user
+        ).order_by('-datetime').first()
+
+        if last and last.datetime:
+            # Convert to local time before formatting
+            local_dt = localtime(last.datetime)
+            return local_dt.strftime('%d-%m-%Y %H:%M')
+
+        return None
+
+    def get_last_consultation_user_id(self, obj):
+        last = ConsulationSchedules.objects.filter(
+            client=obj.client,
+            user=obj.user,
+        ).exclude(id=obj.id).order_by('-datetime').first()
+        return last.user.id if last else obj.user.id                                    
 
 

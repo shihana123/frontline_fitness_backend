@@ -4,9 +4,10 @@ from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer
 from dj_rest_auth.views import UserDetailsView
+from rest_framework.permissions import IsAuthenticated
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -55,4 +56,69 @@ class NewClientListView(APIView):
         clients = Client.objects.filter(new_client=True)
         serializer = NewClientSerializer(clients, many=True)
         return Response(serializer.data)
+    
 
+class ScheduleConsultationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data.copy()
+        data['user'] = request.user.id  # Attach logged-in user automatically
+
+        serializer = ConsultationScheduleSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            client_id = serializer.validated_data['client'].id  # Extract client from validated data
+            user_id = request.user.id
+            client = Client.objects.get(id=client_id)
+            client.trainer_first_consultation = 2
+
+            
+            no_of_consultation = serializer.validated_data.get('no_of_consultation')
+
+            if no_of_consultation == 2:
+                client.new_client = False
+                client.trainer_first_consultation = 1
+
+            client.save()
+
+            # Update latest ConsulationSchedules row's status to True (1)
+            previous_consultation = ConsulationSchedules.objects.filter(
+                client=client,
+                user=request.user,
+                status=False  # assuming you're only interested in those not already marked True
+            ).order_by('-datetime')[1:2].first()
+
+            if previous_consultation:
+                previous_consultation.status = True
+                previous_consultation.save()
+
+            # client.save()
+            return Response({'message': 'Consultation scheduled successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class TrainerConsultationDetails(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data.copy()
+        data['user'] = request.user.id  # Attach logged-in user automatically
+
+        serializer = TrainerConsultationDataSerializer(data=data)
+        if serializer.is_valid():
+            serializer.save()
+            client_id = serializer.validated_data['client'].id  # Extract client from validated data
+            client = Client.objects.get(id=client_id)
+            client.trainer_first_consultation = 3
+            client.save()
+
+            return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ConsultationScheduleDetails(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        consultations = ConsulationSchedules.objects.filter(user=request.user, status=False, client__trainer_first_consultation=3).select_related('client')
+        serializer = ConsultationScheduleWithClientSerializer(consultations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

@@ -93,8 +93,8 @@ class Client(models.Model):
     phone = models.CharField(max_length=20)
     status = models.CharField(max_length=20, choices=CLIENT_STATUS_CHOICES)
     new_client = models.BooleanField(default=True)
-    diet_first_consultation = models.BooleanField(default=False)
-    trainer_first_consultation = models.BooleanField(default=False)
+    diet_first_consultation = models.IntegerField(default=False)
+    trainer_first_consultation = models.IntegerField(default=False)
 
     def __str__(self):
         return self.name
@@ -110,3 +110,28 @@ class ProgramClient(models.Model):
 
     def __str__(self):
         return f"{self.client.name} - {self.program.name}"
+
+class ConsulationSchedules(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    no_of_consultation = models.IntegerField()
+    datetime = models.DateTimeField()
+    type = models.CharField(max_length=50)
+    status = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Consultation for {self.client.name} with {self.user.username} on {self.datetime}"
+
+class TrainerConsultationDetails(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    no_of_consultation = models.IntegerField()
+    current_acitivity_level = models.CharField(max_length=100, blank=True, null=True)
+    current_workouts = models.CharField(max_length=100, blank=True, null=True)
+    physical_limitations = models.CharField(max_length=100, blank=True, null=True)
+    equipment_owned = models.CharField(max_length=100, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Consultation Details of trainer  for {self.client.name} with {self.user.username} on {self.created_at}"
