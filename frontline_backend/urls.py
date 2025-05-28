@@ -1,6 +1,6 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -14,7 +14,8 @@ urlpatterns = [
     path('programCreate', ProgramCreateView.as_view(), name='program-create'),
     path('ProgramList', ProgramListView.as_view(), name='program-list'),
 
-    path('clientList', NewClientListView.as_view(), name='client-list'),
+    path('newclientList', NewClientListView.as_view(), name='newclient-list'),
+    path('clientList', ClientListView.as_view(), name='client-list'),
 
     path('scheduleconsulation', ScheduleConsultationView.as_view(), name='schedule-consultation'),
     path('trainerconsulation_details', TrainerConsultationDetails.as_view(), name='trainer_consulation_details'),

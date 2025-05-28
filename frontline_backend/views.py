@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
 from .models import User, Role, UserRole, Program, Client, ConsulationSchedules
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 
@@ -127,3 +127,9 @@ class ConsultationScheduleDetails(APIView):
         ).select_related('client')
         serializer = ConsultationScheduleWithClientSerializer(consultations, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class ClientListView(APIView):
+    def get(self, request):
+        clients = Client.objects.filter(new_client=False)
+        serializer =ClientSerializer(clients, many=True)
+        return Response(serializer.data)

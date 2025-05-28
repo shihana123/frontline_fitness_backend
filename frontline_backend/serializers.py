@@ -106,7 +106,7 @@ class NewClientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Client
-        fields = ['id', 'name', 'email', 'phone', 'new_client',
+        fields = ['id', 'name', 'email', 'phone', 'new_client', 'client_id', 
                   'diet_first_consultation', 'trainer_first_consultation', 'programs']
 
 class ConsultationScheduleSerializer(serializers.ModelSerializer):
@@ -123,7 +123,7 @@ class ClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)
     class Meta:
         model = Client
-        fields = ['id', 'name', 'email', 'phone', 'status', 'programs']
+        fields = ['id', 'name', 'email', 'phone', 'status', 'programs', 'client_id']
 
 class ConsultationScheduleWithClientSerializer(serializers.ModelSerializer):
     client = ClientSerializer()  # nested serializer
@@ -156,6 +156,8 @@ class ConsultationScheduleWithClientSerializer(serializers.ModelSerializer):
             client=obj.client,
             user=obj.user,
         ).exclude(id=obj.id).order_by('-datetime').first()
-        return last.user.id if last else obj.user.id                                    
+        return last.user.id if last else obj.user.id 
+
+                        
 
 
