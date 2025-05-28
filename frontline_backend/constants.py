@@ -11,8 +11,16 @@ STATUS_CHOICES = [
 ]
 
 CLIENT_STATUS_CHOICES = [
-        ('lead', 'Lead'),
-        ('interested', 'Interested'),
-        ('converted', 'Converted'),
-        ('inactive', 'Inactive'),
-    ]
+    ('lead', 'Lead'),
+    ('interested', 'Interested'),
+    ('converted', 'Converted'),
+    ('inactive', 'Inactive'),
+]
+
+ROLE_PREFIXES = {
+    'admin': 'AD',
+    'trainer': 'TR',
+    'dietitian': 'DT',
+    'manager': 'MG',
+    'sales': 'SL',
+}

@@ -1,6 +1,7 @@
 # users/views.py
 
 from rest_framework import generics
+from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
@@ -119,6 +120,10 @@ class ConsultationScheduleDetails(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        consultations = ConsulationSchedules.objects.filter(user=request.user, status=False, client__trainer_first_consultation=3).select_related('client')
+        consultations = ConsulationSchedules.objects.filter(
+            Q(user=request.user),
+            Q(status=False),
+            Q(client__trainer_first_consultation=3) | Q(client__trainer_first_consultation=1)
+        ).select_related('client')
         serializer = ConsultationScheduleWithClientSerializer(consultations, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

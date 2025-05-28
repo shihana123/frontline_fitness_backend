@@ -1,9 +1,11 @@
 # users/serializers.py
 
 from rest_framework import serializers
+from django.db.models import Count
 from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
+from .constants import ROLE_PREFIXES 
 
 class UserCreateSerializer(serializers.ModelSerializer):
     role_id = serializers.IntegerField(write_only=True)  # coming from frontend
@@ -28,6 +30,15 @@ class UserCreateSerializer(serializers.ModelSerializer):
         role = Role.objects.get(id=role_id)
         UserRole.objects.create(user=user, role=role)
 
+        # Generate user_id
+        existing_count = UserRole.objects.filter(role=role).count()
+
+        # Step 5: Generate user_id
+        prefix = ROLE_PREFIXES.get(role.rolename.lower(), 'XX')
+        serial_number = str(existing_count).zfill(2)  # e.g., 00, 01, 02...
+        user.user_id = f"FF{prefix}{serial_number}"
+        user.save()
+
         return user
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -45,7 +56,7 @@ class UserSerializer(serializers.ModelSerializer):
     roles = serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ['id', 'name', 'email', 'phone', 'roles']
+        fields = ['id', 'name', 'email', 'phone', 'roles', 'user_id']
 
     def get_roles(self, obj):
         user_roles = UserRole.objects.filter(user=obj).select_related('role')

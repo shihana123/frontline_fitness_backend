@@ -18,6 +18,7 @@ class UserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
     
 class User(AbstractBaseUser, PermissionsMixin):
+    user_id = models.CharField(max_length=10, unique=True, null=True, blank=True)
     name = models.CharField(max_length=100, null=False)
     phone = models.CharField(max_length=15, null=False)
     email = models.EmailField(unique=True, null=False)
@@ -79,6 +80,11 @@ class Program(models.Model):
     group_select_time_level2 = models.JSONField(null=True, blank=True)
     group_capacity_level2 = models.PositiveIntegerField(null=True, blank=True)
     group_trainer_level2 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_2_programs')
+
+    group_select_days_level3 = models.JSONField(null=True, blank=True)
+    group_select_time_level3 = models.JSONField(null=True, blank=True)
+    group_capacity_level3 = models.PositiveIntegerField(null=True, blank=True)
+    group_trainer_level3 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_3_programs')
     
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
 
@@ -87,6 +93,7 @@ class Program(models.Model):
 
 
 class Client(models.Model):
+    client_id = models.CharField(max_length=10, unique=True, null=True, blank=True)
     name = models.CharField(max_length=255)
     source = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
