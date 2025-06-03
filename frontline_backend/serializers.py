@@ -108,6 +108,12 @@ class NewClientSerializer(serializers.ModelSerializer):
         model = Client
         fields = ['id', 'name', 'email', 'phone', 'new_client', 'client_id', 
                   'diet_first_consultation', 'trainer_first_consultation', 'programs']
+        
+    def get_programs(self, obj):
+        user = self.context['request'].user  # logged-in user
+        # Filter only programs where trainer is the logged-in user
+        program_clients = obj.programs.filter(trainer=user)
+        return ProgramClientSerializer(program_clients, many=True).data
 
 class ConsultationScheduleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -123,7 +129,12 @@ class ClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)
     class Meta:
         model = Client
-        fields = ['id', 'name', 'email', 'phone', 'status', 'programs', 'client_id']
+        fields = ['id', 'name', 'email', 'phone', 'status', 'programs', 'client_id', 'workout_start_date']
+    def get_programs(self, obj):
+        user = self.context['request'].user  # logged-in user
+        # Filter only programs where trainer is the logged-in user
+        program_clients = obj.programs.filter(trainer=user)
+        return ProgramClientSerializer(program_clients, many=True).data
 
 class ConsultationScheduleWithClientSerializer(serializers.ModelSerializer):
     client = ClientSerializer()  # nested serializer

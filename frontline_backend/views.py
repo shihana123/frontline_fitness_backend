@@ -53,8 +53,10 @@ class ProgramListView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class NewClientListView(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
-        clients = Client.objects.filter(new_client=True)
+        user = request.user.id
+        clients = Client.objects.filter(new_client=True, programs__trainer_id = user).distinct()
         serializer = NewClientSerializer(clients, many=True)
         return Response(serializer.data)
     
@@ -76,11 +78,14 @@ class ScheduleConsultationView(APIView):
 
             
             no_of_consultation = serializer.validated_data.get('no_of_consultation')
+            no_of_consultation = serializer.validated_data.get('no_of_consultation')
 
             if no_of_consultation == 2:
                 client.new_client = False
                 client.trainer_first_consultation = 1
-
+            workout_start_date = request.data.get('workout_start_date')
+            if workout_start_date:
+                client.workout_start_date = workout_start_date
             client.save()
 
             # Update latest ConsulationSchedules row's status to True (1)
@@ -129,7 +134,15 @@ class ConsultationScheduleDetails(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class ClientListView(APIView):
+    permission_classes = [IsAuthenticated]
     def get(self, request):
-        clients = Client.objects.filter(new_client=False)
+        user = request.user.id
+        clients = Client.objects.filter(new_client=False, programs__trainer_id = user).distinct()
         serializer =ClientSerializer(clients, many=True)
+        return Response(serializer.data)
+    
+class ClientDetailsView(APIView):
+    def get(self, request, client_id):
+        clients = Client.objects.filter(id=client_id)
+        serializer = ClientSerializer(clients, many=True)
         return Response(serializer.data)

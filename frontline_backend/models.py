@@ -1,6 +1,7 @@
 from django.db import models
 from .constants import GENDER_CHOICES, STATUS_CHOICES, CLIENT_STATUS_CHOICES
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.conf import settings
 # Create your models here.
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -100,8 +101,10 @@ class Client(models.Model):
     phone = models.CharField(max_length=20)
     status = models.CharField(max_length=20, choices=CLIENT_STATUS_CHOICES)
     new_client = models.BooleanField(default=True)
+    workout_start_date = models.DateField(null=True, blank=True)
     diet_first_consultation = models.IntegerField(default=False)
     trainer_first_consultation = models.IntegerField(default=False)
+    
 
     def __str__(self):
         return self.name
@@ -114,6 +117,20 @@ class ProgramClient(models.Model):
     preferred_time = models.CharField(max_length=100, blank=True, null=True)
     preferred_group_time = models.CharField(max_length=100, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    trainer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='trainer_program_clients'
+    )
+    dietitian = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dietitian_program_clients'
+    )
 
     def __str__(self):
         return f"{self.client.name} - {self.program.name}"
