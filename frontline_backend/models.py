@@ -116,6 +116,7 @@ class ProgramClient(models.Model):
     program = models.ForeignKey('Program', on_delete=models.CASCADE, related_name='program_clients')
     preferred_time = models.CharField(max_length=100, blank=True, null=True)
     preferred_group_time = models.CharField(max_length=100, blank=True, null=True)
+    workout_days = models.JSONField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     trainer = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -159,3 +160,33 @@ class TrainerConsultationDetails(models.Model):
 
     def __str__(self):
         return f"Consultation Details of trainer  for {self.client.name} with {self.user.username} on {self.created_at}"
+    
+class WeeklyWorkoutUpdates(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    trainer_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    week_no = models.IntegerField(default=1, blank=True)
+    no_of_days = models.IntegerField(default=1, blank=True)
+    week_start_date = models.DateField(null=True)
+    week_end_date = models.DateField(null=True)
+    status = models.BooleanField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Weekly updates of  {self.client.name}  on {self.created_at}"
+    
+class WeeklyWorkoutwithDaysUpdates(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    trainer_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    week_no = models.IntegerField(default=1, blank=True)
+    day_no = models.IntegerField(default=1, blank=True)
+    workout_date = models.DateField(null=True)
+    workout_type = models.CharField(max_length=100, null=True, blank=True)
+    workout_sets = models.IntegerField(default=1, blank=True)
+    workout_reps = models.IntegerField(default=1, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Weekly updates of  {self.client.name}  on {self.created_at}"
+    
+
+

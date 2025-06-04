@@ -5,10 +5,12 @@ from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
+from datetime import datetime, timedelta
+import calendar
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -83,10 +85,35 @@ class ScheduleConsultationView(APIView):
             if no_of_consultation == 2:
                 client.new_client = False
                 client.trainer_first_consultation = 1
+
+                
+
             workout_start_date = request.data.get('workout_start_date')
             if workout_start_date:
                 client.workout_start_date = workout_start_date
             client.save()
+
+            if workout_start_date and no_of_consultation == 2:
+                program_client = ProgramClient.objects.filter(client=client, status="active").last()
+                if program_client and program_client.workout_days:
+                    no_of_days = len(program_client.workout_days)
+                else:
+                    no_of_days = 0
+
+                workout_start_date = datetime.strptime(workout_start_date, "%Y-%m-%d").date()
+                start_weekday = workout_start_date.weekday()  # Monday=0, Sunday=6
+                days_until_saturday = (calendar.SATURDAY - start_weekday) % 7
+                week_end_date = workout_start_date + timedelta(days=days_until_saturday)
+
+                WeeklyWorkoutUpdates.objects.create(
+                    client = client,
+                    trainer_id = request.user,
+                    week_no = 1,
+                    no_of_days = no_of_days,
+                    week_start_date = workout_start_date,
+                    week_end_date = week_end_date,
+                    status = False
+                )
 
             # Update latest ConsulationSchedules row's status to True (1)
             previous_consultation = ConsulationSchedules.objects.filter(
@@ -145,4 +172,11 @@ class ClientDetailsView(APIView):
     def get(self, request, client_id):
         clients = Client.objects.filter(id=client_id)
         serializer = ClientSerializer(clients, many=True)
+        return Response(serializer.data)
+
+class WeeklyWorkoutDetailsView(APIView):
+    def get(self, request, client_id):
+        client = Client.objects.get(id=client_id)
+        weekly_updates = WeeklyWorkoutUpdates.objects.filter(client=client).order_by('-week_no')
+        serializer = WeeklyWorkoutSerializer(weekly_updates, many=True)
         return Response(serializer.data)
