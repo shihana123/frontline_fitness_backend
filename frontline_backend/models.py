@@ -166,6 +166,7 @@ class WeeklyWorkoutUpdates(models.Model):
     trainer_id = models.ForeignKey(User, on_delete=models.CASCADE)
     week_no = models.IntegerField(default=1, blank=True)
     no_of_days = models.IntegerField(default=1, blank=True)
+    week_no_of_days = models.IntegerField(default=1, blank=True)
     week_start_date = models.DateField(null=True)
     week_end_date = models.DateField(null=True)
     status = models.BooleanField(default=0)

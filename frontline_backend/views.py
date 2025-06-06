@@ -105,11 +105,21 @@ class ScheduleConsultationView(APIView):
                 days_until_saturday = (calendar.SATURDAY - start_weekday) % 7
                 week_end_date = workout_start_date + timedelta(days=days_until_saturday)
 
+                week_range = [workout_start_date + timedelta(days=i) for i in range((week_end_date - workout_start_date).days + 1)]
+                current_week_days = [day.strftime('%A').lower() for day in week_range]
+
+                week_no_of_days = 0
+                if program_client and program_client.workout_days:
+                    client_days = [day.lower() for day in program_client.workout_days]
+                    # Count how many of client's workout days fall in this week range
+                    week_no_of_days = sum(1 for day in current_week_days if day in client_days)
+
                 WeeklyWorkoutUpdates.objects.create(
                     client = client,
                     trainer_id = request.user,
                     week_no = 1,
                     no_of_days = no_of_days,
+                    week_no_of_days = week_no_of_days,
                     week_start_date = workout_start_date,
                     week_end_date = week_end_date,
                     status = False
