@@ -5,11 +5,11 @@ from django.db.models import Q
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates
 from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import calendar
 
 class CustomUserDetailsView(UserDetailsView):
@@ -109,10 +109,18 @@ class ScheduleConsultationView(APIView):
                 current_week_days = [day.strftime('%A').lower() for day in week_range]
 
                 week_no_of_days = 0
+                week_workout_days = []
+                week_workout_dates = []
                 if program_client and program_client.workout_days:
                     client_days = [day.lower() for day in program_client.workout_days]
                     # Count how many of client's workout days fall in this week range
-                    week_no_of_days = sum(1 for day in current_week_days if day in client_days)
+                    # week_no_of_days = sum(1 for day in current_week_days if day in client_days)
+
+                    for date, day_name in zip(week_range, current_week_days):
+                        if day_name in client_days:
+                            week_no_of_days += 1
+                            week_workout_days.append(day_name)
+                            week_workout_dates.append(date.strftime('%Y-%m-%d'))
 
                 WeeklyWorkoutUpdates.objects.create(
                     client = client,
@@ -122,6 +130,8 @@ class ScheduleConsultationView(APIView):
                     week_no_of_days = week_no_of_days,
                     week_start_date = workout_start_date,
                     week_end_date = week_end_date,
+                    week_workout_days = week_workout_days,
+                    week_workout_dates = week_workout_dates,
                     status = False
                 )
 
@@ -190,3 +200,95 @@ class WeeklyWorkoutDetailsView(APIView):
         weekly_updates = WeeklyWorkoutUpdates.objects.filter(client=client).order_by('-week_no')
         serializer = WeeklyWorkoutSerializer(weekly_updates, many=True)
         return Response(serializer.data)
+
+class SaveWeeklyWorkoutUpdatesView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request, client_id, week_table_id):
+        trainer_id = request.user.id
+        # data = request.data.get('data')
+
+        if not trainer_id:
+            return Response({'error': 'trainer_id is missing'}, status=400)
+        try:
+            client = Client.objects.get(id=client_id)
+            trainer = request.user
+            weekly_update = WeeklyWorkoutUpdates.objects.get(id=week_table_id)
+        except (Client.DoesNotExist, User.DoesNotExist, WeeklyWorkoutUpdates.DoesNotExist):
+            return Response({'error': 'Invalid client, trainer, or weekly_update ID.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        for item in request.data:
+            workout_type = item.get('workout_type')
+            sets = item.get('sets') or 0
+            reps = item.get('reps') or 0
+            week_no = item.get('week_no') or 1
+            day_no = int(item.get('day') or 1)
+            workout_date = item.get('date')
+
+            if not workout_type:
+                continue
+
+            WeeklyWorkoutwithDaysUpdates.objects.create(
+                client=client,
+                trainer_id=trainer,
+                weekly_updates_id=weekly_update,
+                week_no=week_no,
+                day_no=day_no,
+                workout_date=workout_date,
+                workout_type=workout_type,
+                workout_sets=sets,
+                workout_reps=reps
+            )
+
+        weekly_update.status = True
+        weekly_update.save()
+
+        # Step 2: Prepare next week's data
+        if client.workout_start_date:
+            program_client = ProgramClient.objects.filter(client=client, status="active").last()
+
+            if program_client and program_client.workout_days:
+                client_days = [day.lower() for day in program_client.workout_days]
+                no_of_days = len(client_days)
+            else:
+                no_of_days = 0
+                client_days = []
+
+            # Next week's start date is one day after current week_end_date
+            current_week_end = weekly_update.week_end_date
+            next_week_start = current_week_end + timedelta(days=1)
+
+            # Calculate end of next week (Saturday)
+            start_weekday = next_week_start.weekday()
+            days_until_saturday = (calendar.SATURDAY - start_weekday) % 7
+            next_week_end = next_week_start + timedelta(days=days_until_saturday)
+
+            # Date range for next week
+            next_week_range = [next_week_start + timedelta(days=i) for i in range((next_week_end - next_week_start).days + 1)]
+            next_week_day_names = [d.strftime('%A').lower() for d in next_week_range]
+
+            # Filter workout days
+            week_no_of_days = 0
+            week_workout_days = []
+            week_workout_dates = []
+
+            for date, day_name in zip(next_week_range, next_week_day_names):
+                if day_name in client_days:
+                    week_no_of_days += 1
+                    week_workout_days.append(day_name)
+                    week_workout_dates.append(date.strftime('%Y-%m-%d'))
+
+            # Step 3: Create next WeeklyWorkoutUpdates record
+            WeeklyWorkoutUpdates.objects.create(
+                client=client,
+                trainer_id=request.user,
+                week_no=weekly_update.week_no + 1,
+                no_of_days=no_of_days,
+                week_no_of_days=week_no_of_days,
+                week_start_date=next_week_start,
+                week_end_date=next_week_end,
+                week_workout_days=week_workout_days,
+                week_workout_dates=week_workout_dates,
+                status=False
+            )
+
+        return Response({'success': 'Workout updates saved successfully.'}, status=status.HTTP_201_CREATED)

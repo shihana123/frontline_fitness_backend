@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -169,7 +169,15 @@ class ConsultationScheduleWithClientSerializer(serializers.ModelSerializer):
         ).exclude(id=obj.id).order_by('-datetime').first()
         return last.user.id if last else obj.user.id 
     
+
+class WeeklyWorkoutWithDaysSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WeeklyWorkoutwithDaysUpdates
+        fields = '__all__'
+
 class WeeklyWorkoutSerializer(serializers.ModelSerializer):
+    daily_workouts = WeeklyWorkoutWithDaysSerializer(many=True, read_only=True)
+
     class Meta:
         model = WeeklyWorkoutUpdates
         fields = '__all__'

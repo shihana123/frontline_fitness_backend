@@ -169,6 +169,8 @@ class WeeklyWorkoutUpdates(models.Model):
     week_no_of_days = models.IntegerField(default=1, blank=True)
     week_start_date = models.DateField(null=True)
     week_end_date = models.DateField(null=True)
+    week_workout_dates = models.JSONField(null=True, blank=True)
+    week_workout_days = models.JSONField(null=True, blank=True)
     status = models.BooleanField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -178,6 +180,7 @@ class WeeklyWorkoutUpdates(models.Model):
 class WeeklyWorkoutwithDaysUpdates(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     trainer_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    weekly_updates_id = models.ForeignKey(WeeklyWorkoutUpdates, on_delete=models.CASCADE, default=1, related_name='daily_workouts')
     week_no = models.IntegerField(default=1, blank=True)
     day_no = models.IntegerField(default=1, blank=True)
     workout_date = models.DateField(null=True)
