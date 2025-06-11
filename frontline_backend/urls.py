@@ -1,6 +1,6 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -17,6 +17,9 @@ urlpatterns = [
     path('newclientList', NewClientListView.as_view(), name='newclient-list'),
     path('clientList', ClientListView.as_view(), name='client-list'),
     path('clientDetails/<int:client_id>/', ClientDetailsView.as_view(), name='client-details'),
+    path('clientListbyDate/<str:attendance_date>/', ClientListByDateView.as_view(), name='client-list-by-date'),
+    path('clientListbyMonth/<int:client_id>/<int:year>/<int:month>/', ClientListByMonthView.as_view(), name='client-list-by-month'),
+    path('markClientAttendance/', MarkClientAttendanceView.as_view(), name='mark-client-attendance'),
 
     path('weekworkoutDetails/<int:client_id>/', WeeklyWorkoutDetailsView.as_view(), name='weekly-workout-details'),
     path('workout/update/<int:client_id>/<int:week_table_id>', SaveWeeklyWorkoutUpdatesView.as_view(), name='weekly-workout-updates'),

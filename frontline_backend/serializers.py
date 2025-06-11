@@ -182,6 +182,14 @@ class WeeklyWorkoutSerializer(serializers.ModelSerializer):
         model = WeeklyWorkoutUpdates
         fields = '__all__'
 
+class ProgramClientDaysSerializer(serializers.ModelSerializer):
+    client_name = serializers.CharField(source='client.name')
+    program_name = serializers.CharField(source='program.name')
+    has_attendance = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ProgramClient
+        fields = ['id', 'client_name', 'program_name', 'workout_days', 'preferred_time', 'status', 'program_type', 'has_attendance']
                         
 
 

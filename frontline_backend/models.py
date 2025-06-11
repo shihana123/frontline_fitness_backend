@@ -114,6 +114,7 @@ class ProgramClient(models.Model):
  
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='programs')
     program = models.ForeignKey('Program', on_delete=models.CASCADE, related_name='program_clients')
+    program_type = models.CharField(max_length=100, blank=True, null=True)
     preferred_time = models.CharField(max_length=100, blank=True, null=True)
     preferred_group_time = models.CharField(max_length=100, blank=True, null=True)
     workout_days = models.JSONField(null=True, blank=True)
@@ -191,6 +192,16 @@ class WeeklyWorkoutwithDaysUpdates(models.Model):
 
     def __str__(self):
         return f"Weekly updates of  {self.client.name}  on {self.created_at}"
+    
+class ClienAttendanceUpdates(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    trainer_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    workout_date = models.DateField(null=True)
+    status = models.BooleanField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Attendance of   {self.client.name}  marked on {self.created_at}"
     
 
 
