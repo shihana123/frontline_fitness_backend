@@ -92,7 +92,7 @@ class ProgramCreateSerializer(serializers.ModelSerializer):
 class ProgramsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
-        fields = ['id', 'name', 'program_type']
+        fields = ['id', 'name', 'program_type', ]
 
 class ProgramClientSerializer(serializers.ModelSerializer):
     program = ProgramsSerializer()

@@ -366,40 +366,59 @@ class ClientListByMonthView(APIView):
             client = Client.objects.get(id=client_id)
         except Client.DoesNotExist:
             return Response({'error': 'Client not found'}, status=404)
-        
-        # Get latest active program with workout_days
-        program = client.programs.filter(status='active').last()
-        workout_days = program.workout_days if program and program.workout_days else []
+        workout_start_date = client.workout_start_date
+        if not workout_start_date:
+            return Response({'error': 'Client has no workout_start_date'}, status=400)
 
-        
-        # Parse workout_start_date
-        workout_start = client.workout_start_date
-        if not workout_start:
-            return Response({'error': 'Client has no workout start date'}, status=400)
+        # Get active program
+        program_client = ProgramClient.objects.filter(client=client, status="active").last()
+        if not program_client:
+            return Response({'error': 'No active program found'}, status=404)
 
-        # Set date range
-        year, month = int(year), int(month)
-        _, last_day = monthrange(year, month)
-        start_date = max(datetime(year, month, 1).date(), workout_start)
-        end_date = datetime(year, month, last_day).date()
+        workout_days = program_client.workout_days or []
+        # Normalize to lowercase
+        workout_days = [day.lower() for day in workout_days]
 
-        # Filter attendance data
-        attendance_qs = ClienAttendanceUpdates.objects.filter(
-            client=client, workout_date__range=(start_date, end_date)
-        )
-        attendance_map = {
-            a.workout_date: a.status for a in attendance_qs
-        }
-
-        # Generate list of workout dates
+        num_days = monthrange(int(year), int(month))[1]
         workout_dates = []
-        current = start_date
-        while current <= end_date:
-            if current.strftime("%A").lower() in workout_days:
-                workout_dates.append({
-                    "date": current,
-                    "status": attendance_map.get(current, None)  # None = not marked
-                })
-            current += timedelta(days=1)
 
-        return Response(workout_dates)
+        for day in range(1, num_days + 1):
+            current_date = date(int(year), int(month), day)
+            if current_date >= workout_start_date:
+                if current_date.strftime('%A').lower() in workout_days:
+                    # Check if attendance is marked
+                    attendance = ClienAttendanceUpdates.objects.filter(client=client, workout_date=current_date).first()
+                    
+                    workout_dates.append({
+                        'date': current_date,
+                        'attended': bool(attendance),
+                        'attendance_data': {
+                            'id': attendance.id,
+                            'trainer_id': attendance.trainer_id.id,
+                            'status': attendance.status,
+                            'created_at': attendance.created_at,
+                        } if attendance else None
+                    })
+        
+        return Response({
+            'program': {
+                'id': program_client.program.id,
+                'name': program_client.program.name,
+                'type': program_client.program_type,
+                'preferred_time': program_client.preferred_time,
+            },
+            'workout_dates': workout_dates
+        })
+    
+class ProgramListwithTypeView(APIView):
+    def get(self, request, program_type):
+        if program_type:
+            programs = Program.objects.filter(program_type__contains=[program_type])
+        else:
+            programs = Program.objects.all()
+
+        serializer = ProgramsSerializer(programs, many=True)
+        return Response(serializer.data)
+    
+
+        
