@@ -115,7 +115,7 @@ class ProgramClient(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='programs')
     program = models.ForeignKey('Program', on_delete=models.CASCADE, related_name='program_clients')
     program_type = models.CharField(max_length=100, blank=True, null=True)
-    preferred_time = models.CharField(max_length=100, blank=True, null=True)
+    preferred_time = models.JSONField(blank=True, null=True)
     preferred_group_time = models.CharField(max_length=100, blank=True, null=True)
     workout_days = models.JSONField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)

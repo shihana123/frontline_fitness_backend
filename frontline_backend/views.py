@@ -419,6 +419,47 @@ class ProgramListwithTypeView(APIView):
 
         serializer = ProgramsSerializer(programs, many=True)
         return Response(serializer.data)
+
+class TrainerAvailabilityView(APIView):
+    def get(self, request, trainer_id):
+        trainer = User.objects.filter(id=trainer_id).first()
+        if not trainer:
+            return Response({"detail": "Trainer not found."}, status=404)
+
+        return Response({
+            "available_days": trainer.available_days,
+            "available_time": trainer.available_time
+        })
     
+class TrainerScheduleView(APIView):
+    def get(self, request, trainer_id):
+        program_clients = ProgramClient.objects.filter(trainer_id=trainer_id, status="active")
+        # Initialize empty schedule
+        schedule = {
+            'sunday': [],
+            'monday': [],
+            'tuesday': [],
+            'wednesday': [],
+            'thursday': [],
+            'friday': [],
+            'saturday': []
+        }
+        for pc in program_clients:
+            days = pc.workout_days or []         # e.g., ['monday', 'wednesday']
+            time_slots = pc.preferred_time or [] # e.g., [["10:30", "11:30"]]
+            program_name = pc.program.name if pc.program else "Program"
+
+            for day in days:
+                for slot in time_slots:
+                    if slot and len(slot) == 2:
+                        schedule[day.lower()].append({
+                            "start": slot[0],
+                            "end": slot[1],
+                            "program": program_name
+                        })
+
+        return Response(schedule)
+    
+
 
         
