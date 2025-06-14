@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -88,6 +88,10 @@ class ProgramCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid group_trainer_level2 user.")
         return value
     
+class CountrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Country
+        fields = '__all__'
 
 class ProgramsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -191,5 +195,21 @@ class ProgramClientDaysSerializer(serializers.ModelSerializer):
         model = ProgramClient
         fields = ['id', 'client_name', 'program_name', 'workout_days', 'preferred_time', 'status', 'program_type', 'has_attendance']
                         
+class LeadCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Leads
+        fields = '__all__'
+        read_only_fields = ['sales_id']  # mark sales_id as read-only
 
+    def create(self, validated_data):
+        request = self.context.get('request')  # get request from context
+        if request and hasattr(request, 'user'):
+            validated_data['sales_id'] = request.user  # set sales_id here
+        return super().create(validated_data)
+    
+class LeadsSerializer(serializers.ModelSerializer):
+    country_name = serializers.CharField(source='country.country_name', read_only=True)
+    class Meta:
+        model = Leads
+        fields = '__all__'
 

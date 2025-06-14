@@ -203,5 +203,45 @@ class ClienAttendanceUpdates(models.Model):
     def __str__(self):
         return f"Attendance of   {self.client.name}  marked on {self.created_at}"
     
+class Country(models.Model):
+    country_code = models.CharField(max_length=100, null=False)
+    country_name = models.CharField(max_length=100, null=False)
+    def __str__(self):
+        return self.country_name or self.country_code
+
+
+class Leads(models.Model):
+    name = models.CharField(max_length=100, null=False)
+    source = models.CharField(max_length=100, null=False)
+    sales_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    phone = models.CharField(max_length=15, null=False)
+    email = models.EmailField(unique=True, null=False)
+    status = models.CharField(max_length=10, default='New Lead', null=True)
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, default=100)
+    program_type = models.CharField(max_length=50, null=True, blank=True)
+    program_name = models.CharField(max_length=255)
+    preferred_days = models.JSONField(null=True, blank=True)
+    preferred_time = models.JSONField(null=True, blank=True)
+    lead_date = models.DateField(null=True)
+    follow_up_date = models.DateField(null=True)
+    notes = models.CharField(max_length=255, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name or self.email
+
+class LeadsFollowup(models.Model):
+    lead = models.ForeignKey(Leads, on_delete=models.CASCADE)
+    sales = models.ForeignKey(User, on_delete=models.CASCADE)
+    follow_up_date = models.DateField(null=True)
+    status = models.BooleanField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.follow_up_date or self.status
+
+
+
+    
 
 

@@ -5,8 +5,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date
@@ -459,6 +459,56 @@ class TrainerScheduleView(APIView):
                         })
 
         return Response(schedule)
+    
+class CountryListView(APIView):
+    def get(self, request):
+        # users = User.objects.filter(status=True)
+        countries = Country.objects.all()
+        serializer = CountrySerializer(countries, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class LeadCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = LeadCreateSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            lead = serializer.save()
+
+            # Automatically create follow-up entry
+            LeadsFollowup.objects.create(
+                lead_id=lead.id,
+                sales_id=request.user.id,
+                follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
+                status=False  # default follow-up status
+            )
+
+            return Response({
+                "message": "Lead and follow-up created successfully",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    # permission_classes = [IsAuthenticated]
+
+    # def post(self, request):
+    #     serializer = LeadCreateSerializer(data=request.data, context={'request': request})
+    #     if serializer.is_valid():
+    #         serializer.save()
+    #         return Response({"message": "Lead created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
+    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class LeadsListView(APIView):
+    
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        # users = User.objects.filter(status=True)
+        user = request.user.id
+        leads = Leads.objects.filter(sales_id = user).distinct()
+        serializer = LeadsSerializer(leads, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    
     
 
 

@@ -1,9 +1,11 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
+
+    path('fetchCountry/', CountryListView.as_view(), name='country-list'),
 
     path('userDetails/', CustomUserDetailsView.as_view(), name='rest_user_details'),
     path('userCreate', UserCreateView.as_view(), name='user-create'),
@@ -32,5 +34,8 @@ urlpatterns = [
     path('programListTrainer/<str:program_type>/', ProgramListwithTypeView.as_view(), name='program-list-type'),
     path('availabilityTrainer/<int:trainer_id>/', TrainerScheduleView.as_view(), name='availability-trainer'),
     path('timingTrainer/<int:trainer_id>/', TrainerAvailabilityView.as_view(), name='timing-trainer'),
+
+    path('leadCreate', LeadCreateView.as_view(), name='lead-create'),
+    path('leadsList', LeadsListView.as_view(), name='lead-list'),
     
 ]
