@@ -489,15 +489,7 @@ class LeadCreateView(APIView):
             }, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    # permission_classes = [IsAuthenticated]
 
-    # def post(self, request):
-    #     serializer = LeadCreateSerializer(data=request.data, context={'request': request})
-    #     if serializer.is_valid():
-    #         serializer.save()
-    #         return Response({"message": "Lead created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
-    #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
 class LeadsListView(APIView):
     
     permission_classes = [IsAuthenticated]
@@ -505,6 +497,15 @@ class LeadsListView(APIView):
         # users = User.objects.filter(status=True)
         user = request.user.id
         leads = Leads.objects.filter(sales_id = user).distinct()
+        serializer = LeadsSerializer(leads, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class LeadsView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request, lead_id):
+        # users = User.objects.filter(status=True)
+        user = request.user.id
+        leads = Leads.objects.filter(sales_id = user, id=lead_id).distinct()
         serializer = LeadsSerializer(leads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     

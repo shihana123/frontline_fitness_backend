@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -206,10 +206,24 @@ class LeadCreateSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'user'):
             validated_data['sales_id'] = request.user  # set sales_id here
         return super().create(validated_data)
+
+class LeadsFollowupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeadsFollowup
+        fields = ['follow_up_date', 'status', 'created_at']
     
 class LeadsSerializer(serializers.ModelSerializer):
     country_name = serializers.CharField(source='country.country_name', read_only=True)
+    followups = LeadsFollowupSerializer(source='leadsfollowup_set', many=True, read_only=True)
+
     class Meta:
         model = Leads
         fields = '__all__'
+        extra_fields = ['country_name', 'followups']  # include additional fields
+
+    # def to_representation(self, instance):
+    #     rep = super().to_representation(instance)
+    #     for field in getattr(self.Meta, 'extra_fields', []):
+    #         rep[field] = self.fields[field].to_representation(getattr(instance, self.fields[field].source))
+    #     return rep
 
