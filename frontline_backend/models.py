@@ -235,6 +235,7 @@ class LeadsFollowup(models.Model):
     sales = models.ForeignKey(User, on_delete=models.CASCADE)
     follow_up_date = models.DateField(null=True)
     status = models.BooleanField(default=0)
+    notes = models.CharField(max_length=255, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

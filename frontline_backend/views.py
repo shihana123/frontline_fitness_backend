@@ -12,6 +12,8 @@ from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date
 import calendar
 from calendar import monthrange
+from django.shortcuts import get_object_or_404
+import re
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -480,6 +482,7 @@ class LeadCreateView(APIView):
                 lead_id=lead.id,
                 sales_id=request.user.id,
                 follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
+                notes = lead.notes,
                 status=False  # default follow-up status
             )
 
@@ -496,7 +499,7 @@ class LeadsListView(APIView):
     def get(self, request):
         # users = User.objects.filter(status=True)
         user = request.user.id
-        leads = Leads.objects.filter(sales_id = user).distinct()
+        leads = Leads.objects.filter(sales_id = user).exclude(status='Converted').distinct()
         serializer = LeadsSerializer(leads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -508,6 +511,77 @@ class LeadsView(APIView):
         leads = Leads.objects.filter(sales_id = user, id=lead_id).distinct()
         serializer = LeadsSerializer(leads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class LeadsUpdate(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request, lead_id):
+        lead = get_object_or_404(Leads, id=lead_id, sales_id=request.user.id)
+        old_followup_date = lead.follow_up_date
+        serializer = LeadCreateSerializer(lead, data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+
+            LeadsFollowup.objects.filter(
+                    lead_id=lead.id,
+                    follow_up_date=old_followup_date
+                ).update(status=True)
+            
+            if request.data.get('status') != 'Converted':
+                # ✅ Update old follow-up row
+                LeadsFollowup.objects.create(
+                    lead_id=lead.id,
+                    sales_id=request.user.id,
+                    follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
+                    notes = lead.notes,
+                    status=False  # default follow-up status
+                )
+            # ✅ If lead status is converted, create Client & ProgramClient
+            if request.data.get('status') == 'Converted':
+                # Generate new client_id like FFCL001
+                last_client = Client.objects.order_by('-id').first()
+                if last_client and last_client.client_id:
+                    # extract numeric part using regex (e.g., from "FCL004" or "FFCL004")
+                    match = re.search(r'\d+', last_client.client_id)
+                    if match:
+                        last_number = int(match.group())
+                        new_client_id = f"FFCL{last_number + 1:03d}"
+                    else:
+                        # fallback if no number found
+                        new_client_id = "FFCL001"
+                else:
+                    new_client_id = "FFCL001"
+                
+                # ✅ Create Client
+                client = Client.objects.create(
+                    client_id=new_client_id,
+                    name=lead.name,
+                    source=lead.source,
+                    email=lead.email,
+                    phone=lead.phone,
+                    status='Converted',  # assuming default
+                )
+                # ✅ Create ProgramClient
+                ProgramClient.objects.create(
+                    client=client,
+                    program_id=lead.program_name,  # assuming this is ID in POST
+                    program_type=lead.program_type,
+                    preferred_time=lead.preferred_time,
+                    workout_days=lead.preferred_days,
+                    status='active',  # adjust as needed
+                )
+
+                return Response({
+                    "message": "Lead and follow-up updated successfully",
+                    "data": serializer.data
+                }, status=status.HTTP_201_CREATED)
+
+            return Response({
+                "message": "Lead and follow-up updated successfully",
+                "data": serializer.data
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     
     
     
