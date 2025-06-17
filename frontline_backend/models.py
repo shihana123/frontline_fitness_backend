@@ -97,6 +97,7 @@ class Client(models.Model):
     client_id = models.CharField(max_length=10, unique=True, null=True, blank=True)
     name = models.CharField(max_length=255)
     source = models.CharField(max_length=255)
+    sales = models.ForeignKey('User', on_delete=models.CASCADE, null=True)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20)
     status = models.CharField(max_length=20, choices=CLIENT_STATUS_CHOICES)
@@ -104,6 +105,7 @@ class Client(models.Model):
     workout_start_date = models.DateField(null=True, blank=True)
     diet_first_consultation = models.IntegerField(default=False)
     trainer_first_consultation = models.IntegerField(default=False)
+    role_assigned_on = models.DateField(null=True, blank=True)
     
 
     def __str__(self):

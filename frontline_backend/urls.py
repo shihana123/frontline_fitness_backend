@@ -1,6 +1,6 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -12,6 +12,7 @@ urlpatterns = [
     path('userList', UserListView.as_view(), name='user-list'),
     path('roles/', RoleListView.as_view(), name='role-list'),
     path('byrole/<int:role_id>/', UsersByRoleView.as_view(), name='user-role'),
+    path('getRole', UsersRoleView.as_view(), name='user-role-name'),
 
     path('programCreate', ProgramCreateView.as_view(), name='program-create'),
     path('ProgramList', ProgramListView.as_view(), name='program-list'),
@@ -39,5 +40,7 @@ urlpatterns = [
     path('leadsList', LeadsListView.as_view(), name='lead-list'),
     path('fetchLead/<int:lead_id>', LeadsView.as_view(), name='lead-view'),
     path('leadUpdate/<int:lead_id>', LeadsUpdate.as_view(), name='lead-update'),
+    path('salesclientList', SalesClientListView.as_view(), name='sales-client-list'),
+    path('assignTrainerDietitian', AssignTrainerDietitianView.as_view(), name='assign-trainer-dietitian'),
     
 ]

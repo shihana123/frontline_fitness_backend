@@ -103,7 +103,7 @@ class ProgramClientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProgramClient
-        fields = ['program', 'preferred_time', 'preferred_group_time', 'status']
+        fields = '__all__'
 
 class NewClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)

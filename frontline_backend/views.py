@@ -14,6 +14,7 @@ import calendar
 from calendar import monthrange
 from django.shortcuts import get_object_or_404
 import re
+from django.utils import timezone
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -188,6 +189,14 @@ class ClientListView(APIView):
     def get(self, request):
         user = request.user.id
         clients = Client.objects.filter(new_client=False, programs__trainer_id = user).distinct()
+        serializer =ClientSerializer(clients, many=True)
+        return Response(serializer.data)
+
+class SalesClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user.id
+        clients = Client.objects.filter(sales = user).distinct()
         serializer =ClientSerializer(clients, many=True)
         return Response(serializer.data)
     
@@ -559,6 +568,7 @@ class LeadsUpdate(APIView):
                     email=lead.email,
                     phone=lead.phone,
                     status='Converted',  # assuming default
+                    sales=request.user
                 )
                 # ✅ Create ProgramClient
                 ProgramClient.objects.create(
@@ -581,6 +591,62 @@ class LeadsUpdate(APIView):
             }, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class UsersRoleView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user
+        roles = UserRole.objects.filter(user=user).select_related('role')
+
+        # Return role names
+        role_names = [ur.role.rolename for ur in roles]
+
+        return Response({'roles': role_names}, status=200)
+
+class AssignTrainerDietitianView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        client_id = request.data.get('client_id')
+        trainer_id = request.data.get('trainer_id')
+        dietitian_id = request.data.get('dietitian_id')
+
+        if not client_id:
+            return Response({'error': 'Client ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            client = Client.objects.get(id=client_id)  # or client_id=client_id if you're matching via `client_id` field
+        except Client.DoesNotExist:
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get the latest or most relevant ProgramClient entry for the client
+        try:
+            program_client = ProgramClient.objects.filter(client=client).latest('id')
+        except ProgramClient.DoesNotExist:
+            return Response({'error': 'No program found for this client'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Update trainer and dietitian in ProgramClient
+        if trainer_id:
+            try:
+                trainer = User.objects.get(id=trainer_id)
+                program_client.trainer = trainer
+            except User.DoesNotExist:
+                return Response({'error': 'Trainer not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if dietitian_id:
+            try:
+                dietitian = User.objects.get(id=dietitian_id)
+                program_client.dietitian = dietitian
+            except User.DoesNotExist:
+                return Response({'error': 'Dietitian not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        program_client.save()
+
+        # Also update client.role_assigned_on
+        client.role_assigned_on = timezone.now().date()
+        client.save()
+
+        return Response({'message': 'Trainer & Dietitian assigned successfully'}, status=status.HTTP_200_OK)
 
     
     
