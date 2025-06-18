@@ -15,6 +15,7 @@ from calendar import monthrange
 from django.shortcuts import get_object_or_404
 import re
 from django.utils import timezone
+from rest_framework import status as http_status
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -482,7 +483,12 @@ class LeadCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = LeadCreateSerializer(data=request.data, context={'request': request})
+        data = request.data.copy()
+
+        # if 'lead_date' not in data or not data['lead_date']:
+        data['lead_date'] = timezone.now().date()
+
+        serializer = LeadCreateSerializer(data=data, context={'request': request})
         if serializer.is_valid():
             lead = serializer.save()
 
@@ -491,7 +497,6 @@ class LeadCreateView(APIView):
                 lead_id=lead.id,
                 sales_id=request.user.id,
                 follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
-                notes = lead.notes,
                 status=False  # default follow-up status
             )
 
@@ -508,7 +513,9 @@ class LeadsListView(APIView):
     def get(self, request):
         # users = User.objects.filter(status=True)
         user = request.user.id
-        leads = Leads.objects.filter(sales_id = user).exclude(status='Converted').distinct()
+        leads = Leads.objects.filter(sales_id=user)\
+                             .exclude(status='Converted')\
+                             .order_by('-created_at')  # DESC order = LIFO
         serializer = LeadsSerializer(leads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -529,21 +536,16 @@ class LeadsUpdate(APIView):
         serializer = LeadCreateSerializer(lead, data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
-
-            LeadsFollowup.objects.filter(
-                    lead_id=lead.id,
-                    follow_up_date=old_followup_date
-                ).update(status=True)
             
-            if request.data.get('status') != 'Converted':
-                # ✅ Update old follow-up row
-                LeadsFollowup.objects.create(
-                    lead_id=lead.id,
-                    sales_id=request.user.id,
-                    follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
-                    notes = lead.notes,
-                    status=False  # default follow-up status
-                )
+            # if request.data.get('status') != 'Converted':
+            #     # ✅ Update old follow-up row
+            #     LeadsFollowup.objects.create(
+            #         lead_id=lead.id,
+            #         sales_id=request.user.id,
+            #         follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
+            #         notes = lead.notes,
+            #         status=False  # default follow-up status
+            #     )
             # ✅ If lead status is converted, create Client & ProgramClient
             if request.data.get('status') == 'Converted':
                 # Generate new client_id like FFCL001
@@ -647,6 +649,45 @@ class AssignTrainerDietitianView(APIView):
         client.save()
 
         return Response({'message': 'Trainer & Dietitian assigned successfully'}, status=status.HTTP_200_OK)
+        
+class followupStatusUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        followup_id = request.data.get('followup_id')
+        notes = request.data.get('notes')
+        lead_status = request.data.get('lead_status')
+        activity_type = request.data.get('activity_type')
+        try:
+            followup = LeadsFollowup.objects.get(id=followup_id)
+            lead = followup.lead
+
+            # Update Lead status
+            lead.status = lead_status
+            lead.save()
+
+            # Update current followup
+            followup.status = 1
+            followup.lead_status = lead_status
+            followup.notes = notes
+            followup.save()
+
+            if lead_status != 'Converted':
+                LeadsFollowup.objects.create(
+                    lead=lead,
+                    sales=request.user,
+                    follow_up_date=timezone.now().date(),  # or set next date if needed
+                    status=0,
+                    lead_status=None,
+                    notes=None,
+                    activity_type=activity_type
+                )
+                return Response({'message': 'Followup updated successfully'}, status=status.HTTP_200_OK)
+
+        except LeadsFollowup.DoesNotExist:
+            return Response({'error': 'Followup not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
     
     

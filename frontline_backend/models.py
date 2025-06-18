@@ -226,8 +226,8 @@ class Leads(models.Model):
     preferred_time = models.JSONField(null=True, blank=True)
     lead_date = models.DateField(null=True)
     follow_up_date = models.DateField(null=True)
-    notes = models.CharField(max_length=255, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
         return self.name or self.email
@@ -237,8 +237,11 @@ class LeadsFollowup(models.Model):
     sales = models.ForeignKey(User, on_delete=models.CASCADE)
     follow_up_date = models.DateField(null=True)
     status = models.BooleanField(default=0)
+    lead_status = models.CharField(max_length=255, null=True)
     notes = models.CharField(max_length=255, null=True)
+    activity_type = models.CharField(max_length=25, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
         return self.follow_up_date or self.status

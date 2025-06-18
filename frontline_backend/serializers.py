@@ -210,16 +210,27 @@ class LeadCreateSerializer(serializers.ModelSerializer):
 class LeadsFollowupSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeadsFollowup
-        fields = ['follow_up_date', 'status', 'created_at']
+        fields = '__all__'
     
 class LeadsSerializer(serializers.ModelSerializer):
     country_name = serializers.CharField(source='country.country_name', read_only=True)
     followups = LeadsFollowupSerializer(source='leadsfollowup_set', many=True, read_only=True)
+    program_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Leads
         fields = '__all__'
-        extra_fields = ['country_name', 'followups']  # include additional fields
+        extra_fields = ['country_name', 'followups', 'program_details']  # include additional fields
+    
+    def get_program_details(self, obj):
+        # from your_app.models import Program  # replace with your actual app name
+        try:
+            # assuming program_name stores the ID as a string
+            program = Program.objects.get(id=int(obj.program_name))
+            return ProgramsSerializer(program).data
+        except (Program.DoesNotExist, ValueError, TypeError):
+            return None
+
 
     # def to_representation(self, instance):
     #     rep = super().to_representation(instance)
