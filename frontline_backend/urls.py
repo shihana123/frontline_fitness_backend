@@ -1,6 +1,6 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -33,7 +33,9 @@ urlpatterns = [
     path('consulationscheduleList', ConsultationScheduleDetails.as_view(), name='consulation-schedule-list'),
 
     path('programListTrainer/<str:program_type>/', ProgramListwithTypeView.as_view(), name='program-list-type'),
-    path('availabilityTrainer/<int:trainer_id>/', TrainerScheduleView.as_view(), name='availability-trainer'),
+    # path('availabilityTrainer/<int:trainer_id>/', TrainerScheduleView.as_view(), name='availability-trainer'),
+    path('availabilityTrainer', TrainerScheduleView.as_view(), name='availability-trainer'),
+    path('trainerHourlySchedule', TrainerScheduleHourlyView.as_view(), name='availability-trainer'),
     path('timingTrainer/<int:trainer_id>/', TrainerAvailabilityView.as_view(), name='timing-trainer'),
 
     path('leadCreate', LeadCreateView.as_view(), name='lead-create'),

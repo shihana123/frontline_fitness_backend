@@ -9,13 +9,13 @@ from .models import User, Role, UserRole, Program, Client, ConsulationSchedules,
 from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 import calendar
 from calendar import monthrange
 from django.shortcuts import get_object_or_404
 import re
 from django.utils import timezone
-from rest_framework import status as http_status
+from django.utils.dateparse import parse_time
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -442,35 +442,92 @@ class TrainerAvailabilityView(APIView):
             "available_days": trainer.available_days,
             "available_time": trainer.available_time
         })
-    
-class TrainerScheduleView(APIView):
-    def get(self, request, trainer_id):
-        program_clients = ProgramClient.objects.filter(trainer_id=trainer_id, status="active")
-        # Initialize empty schedule
-        schedule = {
-            'sunday': [],
-            'monday': [],
-            'tuesday': [],
-            'wednesday': [],
-            'thursday': [],
-            'friday': [],
-            'saturday': []
-        }
-        for pc in program_clients:
-            days = pc.workout_days or []         # e.g., ['monday', 'wednesday']
-            time_slots = pc.preferred_time or [] # e.g., [["10:30", "11:30"]]
-            program_name = pc.program.name if pc.program else "Program"
 
-            for day in days:
-                for slot in time_slots:
-                    if slot and len(slot) == 2:
-                        schedule[day.lower()].append({
-                            "start": slot[0],
-                            "end": slot[1],
-                            "program": program_name
+def time_overlap(selected_start, selected_end, booked_start, booked_end):
+    return selected_start < booked_end and selected_end > booked_start
+ 
+class TrainerScheduleView(APIView):
+    def post(self, request):
+        selected_start = parse_time(request.data.get('start_time'))
+        selected_end = parse_time(request.data.get('end_time'))
+
+        days_of_week = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        result = []
+        
+        trainer_role_id = 3  # or Role.objects.get(rolename='Trainer').id if you prefer dynamic
+
+        trainers = User.objects.filter(
+            userrole__role_id=trainer_role_id
+        ).distinct()
+
+        for trainer in trainers:
+            trainer_data = {
+                'trainer_id': trainer.id,
+                'trainer_name': trainer.name,
+                'availability': {}
+            }
+            for day in days_of_week:
+                # Default to available
+                status = {'available': True, 'program_name': None}
+
+                program_clients = ProgramClient.objects.filter(trainer=trainer)
+                for pc in program_clients:
+                    workout_days = [d.capitalize() for d in (pc.workout_days or [])]
+                    if day in workout_days:
+                        preferred_times = pc.preferred_time or []
+                        for time_range in preferred_times:
+                            booked_start = parse_time(time_range[0])
+                            booked_end = parse_time(time_range[1])
+                            if time_overlap(selected_start, selected_end, booked_start, booked_end):
+                                status = {
+                                    'available': False,
+                                    'program_name': pc.program.name,
+                                    'program_time': f"{booked_start.strftime('%H:%M')} - {booked_end.strftime('%H:%M')}"
+                                }
+                                break
+
+                trainer_data['availability'][day] = status
+            result.append(trainer_data)
+        return Response(result)
+
+class TrainerScheduleHourlyView(APIView):
+    def get(self, request):
+        trainers = User.objects.filter(userrole__role__rolename='Trainer').distinct()
+        result = []
+
+        for trainer in trainers:
+            program_blocks = []
+            program_clients = ProgramClient.objects.filter(trainer=trainer)
+
+            for pc in program_clients:
+                # Get workout days
+                workout_days = [day.capitalize() for day in (pc.workout_days or [])]
+
+                # Go through preferred_time list
+                for time_range in pc.preferred_time or []:
+                    start = parse_time(time_range[0])
+                    end = parse_time(time_range[1])
+
+                    if start and end:
+                        start_hour = start.hour
+                        end_hour = end.hour
+                        if end.minute > 0:
+                            end_hour += 1  # Round up if there are minutes
+
+                        program_blocks.append({
+                            'start_hour': start_hour,
+                            'end_hour': end_hour,
+                            'program_name': pc.program.name,
+                            'program_days': workout_days
                         })
 
-        return Response(schedule)
+            result.append({
+                'trainer_id': trainer.id,
+                'trainer_name': trainer.name,
+                'program_blocks': program_blocks
+            })
+
+        return Response(result)
     
 class CountryListView(APIView):
     def get(self, request):
