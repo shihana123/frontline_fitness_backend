@@ -106,6 +106,10 @@ class Client(models.Model):
     diet_first_consultation = models.IntegerField(default=False)
     trainer_first_consultation = models.IntegerField(default=False)
     role_assigned_on = models.DateField(null=True, blank=True)
+    program_months = models.IntegerField(default=3)
+    amount = models.CharField(max_length=20,null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
     
 
     def __str__(self):
@@ -218,7 +222,7 @@ class Leads(models.Model):
     sales_id = models.ForeignKey(User, on_delete=models.CASCADE)
     phone = models.CharField(max_length=15, null=False)
     email = models.EmailField(unique=True, null=False)
-    status = models.CharField(max_length=10, default='New Lead', null=True)
+    status = models.CharField(max_length=255, default='New Lead', null=True)
     country = models.ForeignKey(Country, on_delete=models.CASCADE, default=100)
     program_type = models.CharField(max_length=50, null=True, blank=True)
     program_name = models.CharField(max_length=255)
@@ -226,6 +230,7 @@ class Leads(models.Model):
     preferred_time = models.JSONField(null=True, blank=True)
     lead_date = models.DateField(null=True)
     follow_up_date = models.DateField(null=True)
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
 

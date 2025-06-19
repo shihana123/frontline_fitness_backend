@@ -669,6 +669,8 @@ class AssignTrainerDietitianView(APIView):
         client_id = request.data.get('client_id')
         trainer_id = request.data.get('trainer_id')
         dietitian_id = request.data.get('dietitian_id')
+        program_months = request.data.get('program_month')
+        amount = request.data.get('amount')
 
         if not client_id:
             return Response({'error': 'Client ID is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -703,6 +705,8 @@ class AssignTrainerDietitianView(APIView):
 
         # Also update client.role_assigned_on
         client.role_assigned_on = timezone.now().date()
+        client.program_months = program_months
+        client.amount = amount
         client.save()
 
         return Response({'message': 'Trainer & Dietitian assigned successfully'}, status=status.HTTP_200_OK)
@@ -714,6 +718,7 @@ class followupStatusUpdateView(APIView):
         notes = request.data.get('notes')
         lead_status = request.data.get('lead_status')
         activity_type = request.data.get('activity_type')
+        followup_date = request.data.get('followup_date')
         try:
             followup = LeadsFollowup.objects.get(id=followup_id)
             lead = followup.lead
@@ -722,17 +727,59 @@ class followupStatusUpdateView(APIView):
             lead.status = lead_status
             lead.save()
 
+
             # Update current followup
             followup.status = 1
             followup.lead_status = lead_status
             followup.notes = notes
             followup.save()
 
+            if lead_status == 'Converted':
+                lead = get_object_or_404(Leads, id=lead.id)
+                last_client = Client.objects.order_by('-id').first()
+                if last_client and last_client.client_id:
+                    # extract numeric part using regex (e.g., from "FCL004" or "FFCL004")
+                    match = re.search(r'\d+', last_client.client_id)
+                    if match:
+                        last_number = int(match.group())
+                        new_client_id = f"FFCL{last_number + 1:03d}"
+                    else:
+                        # fallback if no number found
+                        new_client_id = "FFCL001"
+                else:
+                    new_client_id = "FFCL001"
+                # ✅ Create Client
+                client = Client.objects.create(
+                    client_id=new_client_id,
+                    name=lead.name,
+                    source=lead.source,
+                    email=lead.email,
+                    phone=lead.phone,
+                    status='Converted',  # assuming default
+                    sales=request.user
+                )
+
+                lead.client = client
+                lead.save()
+
+                # ✅ Create ProgramClient
+                ProgramClient.objects.create(
+                    client=client,
+                    program_id=lead.program_name,  # assuming this is ID in POST
+                    program_type=lead.program_type,
+                    preferred_time=lead.preferred_time,
+                    workout_days=lead.preferred_days,
+                    status='active',  # adjust as needed
+                )
+                return Response({
+                    "message": "Lead converted successfully",
+                }, status=status.HTTP_201_CREATED)
+            
             if lead_status != 'Converted':
                 LeadsFollowup.objects.create(
                     lead=lead,
                     sales=request.user,
-                    follow_up_date=timezone.now().date(),  # or set next date if needed
+                    follow_up_date=followup_date,  # or set next date if needed
                     status=0,
                     lead_status=None,
                     notes=None,
@@ -745,6 +792,14 @@ class followupStatusUpdateView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class fetchFollowupsView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request, client_id):
+        # users = User.objects.filter(status=True)
+        user = request.user.id
+        leads = Leads.objects.filter(sales_id = user, client_id=client_id).distinct()
+        serializer = LeadsSerializer(leads, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     
     

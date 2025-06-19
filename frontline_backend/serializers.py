@@ -133,7 +133,7 @@ class ClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)
     class Meta:
         model = Client
-        fields = ['id', 'name', 'email', 'phone', 'status', 'programs', 'client_id', 'workout_start_date']
+        fields = '__all__'
     def get_programs(self, obj):
         user = self.context['request'].user  # logged-in user
         # Filter only programs where trainer is the logged-in user
@@ -214,13 +214,17 @@ class LeadsFollowupSerializer(serializers.ModelSerializer):
     
 class LeadsSerializer(serializers.ModelSerializer):
     country_name = serializers.CharField(source='country.country_name', read_only=True)
-    followups = LeadsFollowupSerializer(source='leadsfollowup_set', many=True, read_only=True)
+    followups = serializers.SerializerMethodField()
     program_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Leads
         fields = '__all__'
         extra_fields = ['country_name', 'followups', 'program_details']  # include additional fields
+
+    def get_followups(self, obj):
+        followups_qs = obj.leadsfollowup_set.order_by('-follow_up_date')  # DESC order
+        return LeadsFollowupSerializer(followups_qs, many=True).data
     
     def get_program_details(self, obj):
         # from your_app.models import Program  # replace with your actual app name
