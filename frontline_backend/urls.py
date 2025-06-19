@@ -1,6 +1,6 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -16,6 +16,8 @@ urlpatterns = [
 
     path('programCreate', ProgramCreateView.as_view(), name='program-create'),
     path('ProgramList', ProgramListView.as_view(), name='program-list'),
+    path('group-programs', groupProgramListView.as_view(), name='group-program-list'),
+    path('single-group-programs/<int:program_id>', groupProgramView.as_view(), name='single-group-program'),
 
     path('newclientList', NewClientListView.as_view(), name='newclient-list'),
     path('clientList', ClientListView.as_view(), name='client-list'),
@@ -46,5 +48,8 @@ urlpatterns = [
     path('assignTrainerDietitian', AssignTrainerDietitianView.as_view(), name='assign-trainer-dietitian'),
     path('followupStatusUpdate', followupStatusUpdateView.as_view(), name='followup-status-update'),
     path('fetchFollowups/<int:client_id>', fetchFollowupsView.as_view(), name='fetch-followup'),
+
+    path('fetchNewleads/<str:month>/<int:year>/', NewLeadView.as_view(), name='new-lead-count'),
+
     
 ]

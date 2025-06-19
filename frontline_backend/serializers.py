@@ -242,3 +242,42 @@ class LeadsSerializer(serializers.ModelSerializer):
     #         rep[field] = self.fields[field].to_representation(getattr(instance, self.fields[field].source))
     #     return rep
 
+class GroupProgramLevelSerializer(serializers.Serializer):
+    level = serializers.IntegerField()
+    days = serializers.JSONField()
+    time = serializers.JSONField()
+    capacity = serializers.IntegerField()
+    enrolled_clients = serializers.IntegerField()
+
+class GroupProgramSerializer(serializers.ModelSerializer):
+    levels = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Program
+        fields = ['id', 'name', 'levels']
+
+    def get_levels(self, program):
+        levels = []
+        for i in range(1, 4):
+            days = getattr(program, f'group_select_days_level{i}')
+            time = getattr(program, f'group_select_time_level{i}')
+            capacity = getattr(program, f'group_capacity_level{i}')
+            if not capacity:
+                continue  # Skip empty levels
+
+            trainer = getattr(program, f'group_trainer_level{i}')
+            enrolled_clients = ProgramClient.objects.filter(
+                program=program,
+                program_type__icontains='Group',
+                trainer=trainer
+            ).count()
+
+            levels.append({
+                'level': i,
+                'days': days,
+                'time': time,
+                'capacity': capacity,
+                'enrolled_clients': enrolled_clients
+            })
+        return levels
+

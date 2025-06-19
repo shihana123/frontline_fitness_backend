@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
 from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 import re
 from django.utils import timezone
 from django.utils.dateparse import parse_time
+from django.utils.timezone import now
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -800,6 +801,51 @@ class fetchFollowupsView(APIView):
         leads = Leads.objects.filter(sales_id = user, client_id=client_id).distinct()
         serializer = LeadsSerializer(leads, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class groupProgramListView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        programs = Program.objects.filter(program_type__icontains='Group')
+        serializer = GroupProgramSerializer(programs, many=True)
+        return Response(serializer.data)
+    
+class groupProgramView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request, program_id):
+        programs = Program.objects.filter(program_type__icontains='Group', id=program_id)
+        serializer = GroupProgramSerializer(programs, many=True)
+        return Response(serializer.data)
+    
+class NewLeadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, month, year):
+        permission_classes = [IsAuthenticated]
+
+    def get(self, request, month, year):
+        user = request.user
+
+        try:
+            # Convert month name to number using calendar
+            month_number = list(calendar.month).index(month)
+        except ValueError:
+            return Response({'error': 'Invalid month name'}, status=400)
+
+        if month_number == 0:
+            return Response({'error': 'Invalid month name'}, status=400)
+
+        # ✅ Correct: call .filter()
+        leads_count = Leads.objects.filter(
+            sales_id=user,
+            lead_date__year=int(year),
+            lead_date__month=month_number
+        ).count()
+
+        return Response({
+            "leads_count": leads_count,
+            "month": month,
+            "year": year
+        })
 
     
     
