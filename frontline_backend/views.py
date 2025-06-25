@@ -820,36 +820,123 @@ class NewLeadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, month, year):
-        permission_classes = [IsAuthenticated]
-
-    def get(self, request, month, year):
         user = request.user
 
         try:
-            # Convert month name to number using calendar
-            month_number = list(calendar.month).index(month)
+            # ✅ Correct method
+            month_number = list(calendar.month_name).index(month)
         except ValueError:
             return Response({'error': 'Invalid month name'}, status=400)
 
         if month_number == 0:
             return Response({'error': 'Invalid month name'}, status=400)
 
-        # ✅ Correct: call .filter()
         leads_count = Leads.objects.filter(
             sales_id=user,
             lead_date__year=int(year),
-            lead_date__month=month_number
+            lead_date__month=month_number,
         ).count()
+
+        converted_count = Leads.objects.filter(
+            sales_id=user,
+            lead_date__year=int(year),
+            lead_date__month=month_number,
+            status='Converted'
+        ).count()
+
+        followup_count = LeadsFollowup.objects.filter(
+            sales=user,
+            follow_up_date__year=int(year),
+            follow_up_date__month=month_number,
+            status=False  # status = 0
+        ).count()
+
+        clients = Client.objects.filter(
+            sales=user,
+            created_at__year=int(year),
+            created_at__month=month_number
+        )
+
+        # Convert and sum amounts safely
+        monthly_revenue = 0
+        for client in clients:
+            try:
+                if client.amount:
+                    monthly_revenue += float(client.amount)
+            except ValueError:
+                pass  # Ignore invalid amount strings
 
         return Response({
             "leads_count": leads_count,
+            "converted_count": converted_count,
+            "followup_count": followup_count,
+            "monthly_revenue": monthly_revenue,
             "month": month,
             "year": year
         })
-
     
-    
-    
+class GraphLeadView(APIView):
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request, month, year):
+        user = request.user
 
-        
+        try:
+            month_number = list(calendar.month_name).index(month)
+        except ValueError:
+            return Response({'error': 'Invalid month name'}, status=400)
+
+        if month_number == 0:
+            return Response({'error': 'Invalid month name'}, status=400)
+
+        # Total days in month
+        total_days = calendar.monthrange(int(year), month_number)[1]
+
+        # Initialize count map for each day
+        daily_count = {str(day): 0 for day in range(1, total_days + 1)}
+
+        leads = Leads.objects.filter(
+            sales_id=user,
+            lead_date__year=int(year),
+            lead_date__month=month_number
+        )
+
+        for lead in leads:
+            day = str(lead.lead_date.day)
+            daily_count[day] += 1
+
+        return Response({
+            "days": list(daily_count.keys()),
+            "counts": list(daily_count.values()),
+            "month": month,
+            "year": year
+        })
+    
+class GraphRevenueView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, year):
+        user = request.user
+
+        monthly_revenue = [0] * 12  # Index 0 = Jan, 11 = Dec
+
+        clients = Client.objects.filter(
+            sales=user,
+            created_at__year=year
+        )
+
+        for client in clients:
+            try:
+                if client.amount:
+                    month_index = client.created_at.month - 1  # 1-12 → 0-11
+                    monthly_revenue[month_index] += float(client.amount)
+            except (ValueError, AttributeError):
+                continue
+
+        month_names = list(calendar.month_abbr)[1:]  # ['Jan', ..., 'Dec']
+
+        return Response({
+            "months": month_names,
+            "revenue": monthly_revenue,
+            "year": year
+        })
