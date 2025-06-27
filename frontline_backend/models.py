@@ -251,6 +251,41 @@ class LeadsFollowup(models.Model):
     def __str__(self):
         return self.follow_up_date or self.status
 
+class TrainerConsultationDetails(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    no_of_consultation = models.IntegerField()
+    diet_preferences = models.CharField(max_length=100, blank=True, null=True)
+    current_eating_pattern = models.CharField(max_length=100, blank=True, null=True)
+    appetite_level = models.CharField(max_length=100, blank=True, null=True)
+    no_of_meals_per_day = models.CharField(max_length=100, blank=True, null=True)
+    cook_at_home_out = models.CharField(max_length=100, blank=True, null=True)
+    food_allergies = models.CharField(max_length=100, blank=True, null=True)
+    diet_before = models.CharField(max_length=100, blank=True, null=True)
+    snacking_habits = models.CharField(max_length=100, blank=True, null=True)
+    nutrient_deficiencies = models.CharField(max_length=100, blank=True, null=True)
+    sleeping_duration = models.CharField(max_length=100, blank=True, null=True)
+    water_intake_per_day = models.CharField(max_length=100, blank=True, null=True)
+    working_schedule = models.CharField(max_length=100, blank=True, null=True)
+    sleep_quality = models.CharField(max_length=100, blank=True, null=True)
+    stress = models.CharField(max_length=100, blank=True, null=True)
+    hobbies = models.CharField(max_length=100, blank=True, null=True)
+    screen_time = models.CharField(max_length=100, blank=True, null=True)
+    pre_existing_conditions = models.CharField(max_length=100, blank=True, null=True)
+    past_surgeries = models.CharField(max_length=100, blank=True, null=True)
+    medication = models.CharField(max_length=100, blank=True, null=True)
+    menstrual_history = models.CharField(max_length=100, blank=True, null=True)
+    pregnancy_history = models.CharField(max_length=100, blank=True, null=True)
+    breast_feeding = models.CharField(max_length=100, blank=True, null=True)
+    supplements = models.CharField(max_length=100, blank=True, null=True)
+    medical_tests = models.CharField(max_length=100, blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.user
+
 
 
     

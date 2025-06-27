@@ -67,6 +67,14 @@ class NewClientListView(APIView):
         clients = Client.objects.filter(new_client=True, programs__trainer_id = user).distinct()
         serializer = NewClientSerializer(clients, many=True)
         return Response(serializer.data)
+
+class NewClientListDietitianView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user.id
+        clients = Client.objects.filter(new_client=True, programs__dietitian_id = user).distinct()
+        serializer = NewClientSerializer(clients, many=True)
+        return Response(serializer.data)
     
 
 class ScheduleConsultationView(APIView):
