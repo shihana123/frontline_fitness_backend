@@ -1,6 +1,6 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetails, DietConsultationScheduleDetails, DietitianClientListView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -22,6 +22,7 @@ urlpatterns = [
     path('newclientList', NewClientListView.as_view(), name='newclient-list'),
     path('newclientListDietitian', NewClientListDietitianView.as_view(), name='newclient-list-dietitian'),
     path('clientList', ClientListView.as_view(), name='client-list'),
+    path('dietitianclientList', DietitianClientListView.as_view(), name='dietitian-client-list'),
     path('clientDetails/<int:client_id>/', ClientDetailsView.as_view(), name='client-details'),
     path('clientListbyDate/<str:attendance_date>/', ClientListByDateView.as_view(), name='client-list-by-date'),
     path('clientListbyMonth/<int:client_id>/<int:year>/<int:month>/', ClientListByMonthView.as_view(), name='client-list-by-month'),
@@ -34,6 +35,7 @@ urlpatterns = [
     path('scheduleconsulation', ScheduleConsultationView.as_view(), name='schedule-consultation'),
     path('trainerconsulation_details', TrainerConsultationDetails.as_view(), name='trainer_consulation_details'),
     path('consulationscheduleList', ConsultationScheduleDetails.as_view(), name='consulation-schedule-list'),
+    path('dietconsulationscheduleList', DietConsultationScheduleDetails.as_view(), name='diet-consulation-schedule-list'),
 
     path('programListTrainer/<str:program_type>/', ProgramListwithTypeView.as_view(), name='program-list-type'),
     # path('availabilityTrainer/<int:trainer_id>/', TrainerScheduleView.as_view(), name='availability-trainer'),
@@ -53,6 +55,8 @@ urlpatterns = [
     path('fetchNewleads/<str:month>/<int:year>/', NewLeadView.as_view(), name='new-lead-count'),
     path('fetchleadsgraph/<str:month>/<int:year>/', GraphLeadView.as_view(), name='grpah-lead-count'),
     path('fetchrevenuegraph/<int:year>/', GraphRevenueView.as_view(), name='grpah-revenue-count'),
+
+    path('dietitianconsulation_details', DietitianConsultationDetails.as_view(), name='dietitian-consulation-details'),
 
     
 ]

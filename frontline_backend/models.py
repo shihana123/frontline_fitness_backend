@@ -251,7 +251,7 @@ class LeadsFollowup(models.Model):
     def __str__(self):
         return self.follow_up_date or self.status
 
-class TrainerConsultationDetails(models.Model):
+class DietitianConsultationDetails(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     no_of_consultation = models.IntegerField()

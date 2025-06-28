@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -127,6 +127,11 @@ class ConsultationScheduleSerializer(serializers.ModelSerializer):
 class TrainerConsultationDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrainerConsultationDetails
+        fields = '__all__'
+
+class DietitianConsultationDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DietitianConsultationDetails
         fields = '__all__'
 
 class ClientSerializer(serializers.ModelSerializer):
