@@ -286,6 +286,18 @@ class DietitianConsultationDetails(models.Model):
     def __str__(self):
         return self.user
 
+class weeklydietupdates(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    dietitian_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    week_no = models.IntegerField(default=1, blank=True)
+    diet_chart = models.FileField(upload_to='diet_chart/', null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.client
+
 
 
     

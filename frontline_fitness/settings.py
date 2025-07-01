@@ -162,4 +162,9 @@ REST_FRAMEWORK = {
 from django.conf import settings
 print("💬 REST_AUTH_SERIALIZERS in use:", getattr(settings, 'REST_AUTH_SERIALIZERS', 'Not Set'))
 
+import os
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 

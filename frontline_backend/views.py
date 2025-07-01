@@ -5,8 +5,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -17,6 +17,7 @@ import re
 from django.utils import timezone
 from django.utils.dateparse import parse_time
 from django.utils.timezone import now
+from rest_framework.parsers import MultiPartParser, FormParser
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -1013,4 +1014,76 @@ class GraphRevenueView(APIView):
             "months": month_names,
             "revenue": monthly_revenue,
             "year": year
+        })
+    
+class WeeklyDietDetailsView(APIView):
+    def get(self, request, client_id):
+        client = Client.objects.get(id=client_id)
+        weekly_updates = weeklydietupdates.objects.filter(client=client).order_by('-week_no')
+        serializer = WeeklyDietSerializer(weekly_updates, many=True)
+        return Response(serializer.data)
+    
+class SaveWeeklyDietUpdatesView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]  # <-- Add this line
+
+    def post(self, request, client_id):
+        dietitian_id = request.user.id
+        try:
+            client = Client.objects.get(id=client_id)
+        except Client.DoesNotExist:
+            return Response({"error": "Client not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        data = request.data
+        data['client'] = client.id
+        data['dietitian_id'] = request.user.id
+
+        serializer = WeeklyDietUpdateSerializer(data=data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ActiveClientDietitianView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user
+        # Get distinct client IDs where the logged-in user is the dietitian
+        client_ids = ProgramClient.objects.filter(
+            dietitian=user,
+            status='active',  # optional: only active programs
+        ).values_list('client_id', flat=True).distinct()
+
+        # Get the number of unique clients
+        count = Client.objects.filter(id__in=client_ids, new_client=0).count()
+
+        return Response({'active_client_count': count})
+    
+class ConsultationDietitianView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user
+        now = timezone.now()
+        next_week = now + timedelta(days=7)
+
+        # 1. Upcoming in the next 7 days
+        upcoming = ConsulationSchedules.objects.filter(
+            user=user,
+            type='dietitian',
+            status=False,
+            datetime__range=[now, next_week]
+        ).count()
+
+        # 2. Due (missed) consultations
+        due = ConsulationSchedules.objects.filter(
+            user=user,
+            type='dietitian',
+            status=False,
+            datetime__lt=now
+        ).count()
+
+        return Response({
+            'upcoming_consultations': upcoming,
+            'due_consultations': due
         })

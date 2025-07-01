@@ -2,10 +2,12 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
+import os
+from datetime import datetime
 
 class UserCreateSerializer(serializers.ModelSerializer):
     role_id = serializers.IntegerField(write_only=True)  # coming from frontend
@@ -191,6 +193,11 @@ class WeeklyWorkoutSerializer(serializers.ModelSerializer):
         model = WeeklyWorkoutUpdates
         fields = '__all__'
 
+class WeeklyDietSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = weeklydietupdates
+        fields = '__all__'
+
 class ProgramClientDaysSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.name')
     program_name = serializers.CharField(source='program.name')
@@ -285,4 +292,28 @@ class GroupProgramSerializer(serializers.ModelSerializer):
                 'enrolled_clients': enrolled_clients
             })
         return levels
+    
+class WeeklyDietUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = weeklydietupdates
+        fields = ['client', 'dietitian_id', 'week_no', 'diet_chart']
+
+    def validate_diet_chart(self, value):
+        ext = os.path.splitext(value.name)[1]
+        if ext.lower() != '.pdf':
+            raise serializers.ValidationError("Only PDF files are allowed.")
+        return value
+
+    def create(self, validated_data):
+        uploaded_file = validated_data.get('diet_chart')
+
+        # Build a new filename: diet_userid_20250701_1857.pdf
+        user_id = validated_data.get('dietitian_id').id if hasattr(validated_data.get('dietitian_id'), 'id') else validated_data.get('dietitian_id')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+        new_filename = f"diet_user{user_id}_{timestamp}.pdf"
+
+        # Set the new filename
+        uploaded_file.name = new_filename
+
+        return super().create(validated_data)
 

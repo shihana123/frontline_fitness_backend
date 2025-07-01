@@ -1,6 +1,8 @@
 from dj_rest_auth.views import LoginView
 from django.urls import path
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetails, DietConsultationScheduleDetails, DietitianClientListView
+from django.conf import settings
+from django.conf.urls.static import static
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetails, DietConsultationScheduleDetails, DietitianClientListView, WeeklyDietDetailsView, SaveWeeklyDietUpdatesView, ActiveClientDietitianView, ConsultationDietitianView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -57,6 +59,14 @@ urlpatterns = [
     path('fetchrevenuegraph/<int:year>/', GraphRevenueView.as_view(), name='grpah-revenue-count'),
 
     path('dietitianconsulation_details', DietitianConsultationDetails.as_view(), name='dietitian-consulation-details'),
+    path('weekdietDetails/<int:client_id>/', WeeklyDietDetailsView.as_view(), name='weekly-diet-details'),
+    path('diet_chart/update/<int:client_id>', SaveWeeklyDietUpdatesView.as_view(), name='weekly-diet-updates'),
+    path('fetchActiveClientsDietitian/', ActiveClientDietitianView.as_view(), name='diet-active-clients'),
+    path('fetchConsultationDietitian/', ConsultationDietitianView.as_view(), name='diet-consulattion-clients'),
 
     
 ]
+
+# 👇 This enables serving media files (like PDFs) in development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
