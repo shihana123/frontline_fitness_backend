@@ -5,19 +5,20 @@ from django.db.models import Q, OuterRef, Subquery, Exists
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails
 from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
 import calendar
-from calendar import monthrange
+from calendar import monthrange, month_name
 from django.shortcuts import get_object_or_404
 import re
 from django.utils import timezone
 from django.utils.dateparse import parse_time
 from django.utils.timezone import now
 from rest_framework.parsers import MultiPartParser, FormParser
+from django.db.models.functions import ExtractMonth
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -136,11 +137,11 @@ class ScheduleConsultationView(APIView):
                         # Count how many of client's workout days fall in this week range
                         # week_no_of_days = sum(1 for day in current_week_days if day in client_days)
 
-                        for date, day_name in zip(week_range, current_week_days):
+                        for week_date, day_name in zip(week_range, current_week_days):
                             if day_name in client_days:
                                 week_no_of_days += 1
                                 week_workout_days.append(day_name)
-                                week_workout_dates.append(date.strftime('%Y-%m-%d'))
+                                week_workout_dates.append(week_date.strftime('%Y-%m-%d'))
 
                     WeeklyWorkoutUpdates.objects.create(
                         client = client,
@@ -178,6 +179,7 @@ class ScheduleConsultationView(APIView):
                     client.new_client = False
                     client.diet_first_consultation = 1
 
+                if no_of_consultation >= 2:
                     previous_consultation = ConsulationSchedules.objects.filter(
                         client=client,
                         user=request.user,
@@ -187,6 +189,25 @@ class ScheduleConsultationView(APIView):
                     if previous_consultation:
                         previous_consultation.status = True
                         previous_consultation.save()
+
+                    # Insert into MonthlyDietConsultationDetails
+                    consult_date = serializer.validated_data.get('datetime')
+                    height = request.data.get('height', 0)
+                    weight = request.data.get('weight', 0)
+                    bmi = request.data.get('bmi', 0)
+                    notes = request.data.get('notes', '')
+
+                    MonthlyDietConsultationDetails.objects.create(
+                        client=client,
+                        dietitian_id=request.user,
+                        month=datetime.now().month,
+                        consult_date=previous_consultation.datetime.date(),
+                        height=height,
+                        weight=weight,
+                        bmi=bmi,
+                        notes=notes,
+                        consult_schedule=previous_consultation.id
+                    )
 
             # client.save()
             return Response({'message': 'Consultation scheduled successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
@@ -210,7 +231,7 @@ class TrainerConsultationDetails(APIView):
             return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-class DietitianConsultationDetails(APIView):
+class DietitianConsultationDetailsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -1086,4 +1107,134 @@ class ConsultationDietitianView(APIView):
         return Response({
             'upcoming_consultations': upcoming,
             'due_consultations': due
+        })
+    
+class UpcomingConsultDietView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        next_two_weeks = now + timedelta(days=14)
+
+        consultations = ConsulationSchedules.objects.filter(
+            Q(user=request.user),
+            Q(status=False),
+            Q(datetime__range=(now, next_two_weeks)),  # upcoming in next 2 weeks
+            Q(client__diet_first_consultation=3) | Q(client__diet_first_consultation=1)
+        ).select_related('client')
+
+        serializer = ConsultationScheduleWithClientSerializer(consultations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class MissedConsultDietView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+
+        due_consultations = ConsulationSchedules.objects.filter(
+            Q(user=request.user),
+            Q(status=False),
+            Q(datetime__lt=now),  # past datetime
+            Q(client__diet_first_consultation=3) | Q(client__diet_first_consultation=1)
+        ).select_related('client')
+
+        serializer = ConsultationScheduleWithClientSerializer(due_consultations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class DietConsultationDetails(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request, client_id):
+        user = request.user
+
+        # Filter only completed (status=True) dietitian consultations for the given client
+        consultations = ConsulationSchedules.objects.filter(
+            user=user,
+            type='dietitian',
+            client_id=client_id  # 👈 Filter by client
+        )
+        data = []
+        for consultation in consultations:
+            client = consultation.client
+
+            diet_details = DietitianConsultationDetails.objects.filter(client=client, user=user).first()
+            monthly_details = MonthlyDietConsultationDetails.objects.filter(client=client, dietitian_id=user, consult_schedule=consultation).first()
+
+            data.append({
+                "consultation_id": consultation.id,
+                "datetime": consultation.datetime,
+                "no_of_consultation": consultation.no_of_consultation,
+                "client_name": client.name,
+                "status": consultation.status,
+                "dietitian_consultation_details": {
+                    "diet_preferences": diet_details.diet_preferences if diet_details else None,
+                    "current_eating_pattern": diet_details.current_eating_pattern if diet_details else None,
+                    "appetite_level": diet_details.appetite_level if diet_details else None,
+                    "no_of_meals_per_day": diet_details.no_of_meals_per_day if diet_details else None,
+                    "cook_at_home_out": diet_details.cook_at_home_out if diet_details else None,
+                    "food_allergies": diet_details.food_allergies if diet_details else None,
+                    "diet_before": diet_details.diet_before if diet_details else None,
+                    "snacking_habits": diet_details.snacking_habits if diet_details else None,
+                    "nutrient_deficiencies": diet_details.nutrient_deficiencies if diet_details else None,
+                    "sleeping_duration": diet_details.sleeping_duration if diet_details else None,
+                    "water_intake_per_day": diet_details.water_intake_per_day if diet_details else None,
+                    "working_schedule": diet_details.working_schedule if diet_details else None,
+                    "sleep_quality": diet_details.sleep_quality if diet_details else None,
+                    "stress": diet_details.stress if diet_details else None,
+                    "hobbies": diet_details.hobbies if diet_details else None,
+                    "screen_time": diet_details.screen_time if diet_details else None,
+                    "pre_existing_conditions": diet_details.pre_existing_conditions if diet_details else None,
+                    "past_surgeries": diet_details.past_surgeries if diet_details else None,
+                    "medication": diet_details.medication if diet_details else None,
+                    "menstrual_history": diet_details.menstrual_history if diet_details else None,
+                    "pregnancy_history": diet_details.pregnancy_history if diet_details else None,
+                    "breast_feeding": diet_details.breast_feeding if diet_details else None,
+                    "supplements": diet_details.supplements if diet_details else None,
+                    "medical_tests": diet_details.medical_tests if diet_details else None,
+                    # Add more fields as needed
+                },
+                "monthly_diet_consultation_details": {
+                    "height": monthly_details.height if monthly_details else None,
+                    "weight": monthly_details.weight if monthly_details else None,
+                    "bmi": monthly_details.bmi if monthly_details else None,
+                    "notes": monthly_details.notes if monthly_details else None,
+                    "consult_date": monthly_details.consult_date if monthly_details else consultation.datetime.date()
+                }
+            })
+        return Response(data)
+        # You can now combine or join related data like DietitianConsultationDetails & MonthlyDietConsultationDetails
+        # For now just sending the filtered list
+        # serializer = ConsultationScheduleWithClientSerializer(consultations, many=True)
+        # return Response(serializer.data, status=status.HTTP_200_OK)
+
+class DietGraphView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        from .models import MonthlyDietConsultationDetails  # your model path here
+
+        data = (
+            MonthlyDietConsultationDetails.objects
+            .filter(client_id=client_id)
+            .annotate(month_num=ExtractMonth('consult_date'))  # avoid conflict with 'month' field
+            .order_by('consult_date')
+        )
+
+        # prepare graph data
+        months = []
+        weight = []
+        bmi = []
+        height = []
+
+        for entry in data:
+            months.append(month_name[entry.month_num])
+            weight.append(float(entry.weight))
+            bmi.append(float(entry.bmi))
+            height.append(float(entry.height))
+
+        return Response({
+            "months": months,
+            "weight": weight,
+            "bmi": bmi,
+            "height": height
         })

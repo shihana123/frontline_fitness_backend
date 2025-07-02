@@ -2,7 +2,7 @@ from dj_rest_auth.views import LoginView
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetails, DietConsultationScheduleDetails, DietitianClientListView, WeeklyDietDetailsView, SaveWeeklyDietUpdatesView, ActiveClientDietitianView, ConsultationDietitianView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetailsView, DietConsultationScheduleDetails, DietitianClientListView, WeeklyDietDetailsView, SaveWeeklyDietUpdatesView, ActiveClientDietitianView, ConsultationDietitianView, UpcomingConsultDietView, MissedConsultDietView, DietConsultationDetails, DietGraphView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -58,11 +58,15 @@ urlpatterns = [
     path('fetchleadsgraph/<str:month>/<int:year>/', GraphLeadView.as_view(), name='grpah-lead-count'),
     path('fetchrevenuegraph/<int:year>/', GraphRevenueView.as_view(), name='grpah-revenue-count'),
 
-    path('dietitianconsulation_details', DietitianConsultationDetails.as_view(), name='dietitian-consulation-details'),
+    path('dietitianconsulation_details', DietitianConsultationDetailsView.as_view(), name='dietitian-consulation-details'),
     path('weekdietDetails/<int:client_id>/', WeeklyDietDetailsView.as_view(), name='weekly-diet-details'),
     path('diet_chart/update/<int:client_id>', SaveWeeklyDietUpdatesView.as_view(), name='weekly-diet-updates'),
     path('fetchActiveClientsDietitian/', ActiveClientDietitianView.as_view(), name='diet-active-clients'),
     path('fetchConsultationDietitian/', ConsultationDietitianView.as_view(), name='diet-consulattion-clients'),
+    path('dietupcomingconsulationscheduleList', UpcomingConsultDietView.as_view(), name='upcoming-consulattion-clients'),
+    path('dietmissedconsulationscheduleList', MissedConsultDietView.as_view(), name='missed-consulattion-clients'),
+    path('dietconsulationDetails/<int:client_id>', DietConsultationDetails.as_view(), name='diet-consulattion-details'),
+    path('diet_chart_graph/<int:client_id>/', DietGraphView.as_view(), name='diet-graph-view'),
 
     
 ]
