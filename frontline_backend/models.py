@@ -107,6 +107,8 @@ class Client(models.Model):
     trainer_first_consultation = models.IntegerField(default=False)
     role_assigned_on = models.DateField(null=True, blank=True)
     program_months = models.IntegerField(default=3)
+    program_start_date = models.DateField(null=True, blank=True)
+    program_end_date = models.DateField(null=True, blank=True)
     amount = models.CharField(max_length=20,null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -313,6 +315,55 @@ class MonthlyDietConsultationDetails(models.Model):
 
     def __str__(self):
         return self.client
+
+class BiweeklyUpdations(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    dietitian_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    week_no = models.IntegerField(default=1, blank=True)
+    notes = models.CharField(max_length=255, null=True)
+    status = models.BooleanField(default=0, blank=True)
+    update_date = models.DateField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.client
+
+class ClientSubscription(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    program = models.ForeignKey(Program, on_delete=models.CASCADE)
+    program_months = models.IntegerField(default=3)
+    program_start_date = models.DateField(null=True, blank=True)
+    program_end_date = models.DateField(null=True, blank=True)
+    amount = models.CharField(max_length=20,null=True, blank=True)
+    subscription_type = models.CharField(max_length=120, default='new') # new/renewal
+
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.client
+    
+class MeetingsTDC(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    trainer = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='meetings_as_trainer')
+    dietitian = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='meetings_as_dietitian')
+    meeting_type = models.CharField(max_length=120, default='day_1')#day_1, dietchart, dietition_only, TDC, Renewal
+    day_no = models.IntegerField(default=1)
+    status = models.BooleanField(default=False)
+    meeting_date = models.DateField(null=True, blank=True)
+    actual_meeting_date = models.DateField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.client
+
+
+
+
 
 
 

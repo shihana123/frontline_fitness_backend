@@ -5,8 +5,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -91,6 +91,7 @@ class ScheduleConsultationView(APIView):
                 serializer.save()
         type = serializer.validated_data.get('type')
         
+        
         if type == 'trainer':
             if serializer.is_valid():
                 serializer.save()
@@ -167,8 +168,8 @@ class ScheduleConsultationView(APIView):
                     previous_consultation.status = True
                     previous_consultation.save()
         elif type == 'dietitian':
-            if serializer.is_valid():
-                serializer.save()
+            # if serializer.is_valid():
+            #     serializer.save()
                 client_id = serializer.validated_data['client'].id  # Extract client from validated data
                 user_id = request.user.id
                 client = Client.objects.get(id=client_id)
@@ -209,8 +210,8 @@ class ScheduleConsultationView(APIView):
                         consult_schedule=previous_consultation.id
                     )
 
-            # client.save()
-            return Response({'message': 'Consultation scheduled successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+                client.save()
+        return Response({'message': 'Consultation scheduled successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class TrainerConsultationDetails(APIView):
@@ -243,11 +244,79 @@ class DietitianConsultationDetailsView(APIView):
             serializer.save()
             client_id = serializer.validated_data['client'].id  # Extract client from validated data
             client = Client.objects.get(id=client_id)
-            client.diet_first_consultation = 3
+            client.diet_first_consultation = 1
+            client.new_client = False
             client.save()
+
+            # Update ClientSubscription's program_start_date and program_end_date
+            try:
+                subscription = ClientSubscription.objects.filter(client=client, subscription_type='new').latest('id')
+            except ClientSubscription.DoesNotExist:
+                return Response({'error': 'No subscription found'}, status=status.HTTP_404_NOT_FOUND)
+            
+
+            program_months = subscription.program_months
+            start_date = date.today() + timedelta(days=1)
+            end_date = start_date + timedelta(days=program_months * 30)
+            subscription.program_start_date = start_date
+            subscription.program_end_date = end_date
+            subscription.save()
+
+            # Fetch ProgramClient for the client
+            try:
+                program_client = ProgramClient.objects.get(client=client)
+            except ProgramClient.DoesNotExist:
+                return Response({'error': 'ProgramClient not found'}, status=status.HTTP_404_NOT_FOUND)
+
+            trainer = program_client.trainer
+            dietitian = program_client.dietitian
+            program_type = program_client.program_type
+
+            # Determine meeting days
+            meeting_days = []
+            if program_type == 'Personal Training':
+                base_days = [1, 3, 10]
+                next_day = 25
+                while next_day <= (program_months * 30):
+                    base_days.append(next_day)
+                    next_day += 15
+                meeting_days = base_days
+            elif program_type == 'Group':
+                base_days = [1, 10, 24, 50]
+                next_day = 80
+                while next_day <= (program_months * 30):
+                    base_days.append(next_day)
+                    next_day += 30
+                meeting_days = base_days
+
+            # Create meeting records
+            for i, day in enumerate(meeting_days):
+                meeting_date = start_date + timedelta(days=day - 1)
+                MeetingsTDC.objects.create(
+                    client=client,
+                    trainer=trainer,
+                    dietitian=dietitian,
+                    meeting_type=self.get_meeting_type(day, i, len(meeting_days)),
+                    day_no=day,
+                    status=(day == 1),  # Only first day is completed
+                    meeting_date=meeting_date,
+                    actual_meeting_date=None
+                )
+
 
             return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def get_meeting_type(self, day, index, total):
+        if day == 1:
+            return 'day_1'
+        elif day == 3:
+            return 'dietchart'
+        elif day == 10:
+            return 'dietition_only'
+        elif index == total - 1:
+            return 'Renewal'
+        else:
+            return 'TDC'
 
 
 class ConsultationScheduleDetails(APIView):
@@ -269,6 +338,7 @@ class DietConsultationScheduleDetails(APIView):
         consultations = ConsulationSchedules.objects.filter(
             Q(user=request.user),
             Q(status=False),
+            Q(no_of_consultation=1),
             Q(client__diet_first_consultation=3) | Q(client__diet_first_consultation=1)
         ).select_related('client')
         serializer = ConsultationScheduleWithClientSerializer(consultations, many=True)
@@ -768,6 +838,8 @@ class AssignTrainerDietitianView(APIView):
         dietitian_id = request.data.get('dietitian_id')
         program_months = request.data.get('program_month')
         amount = request.data.get('amount')
+        program_start_date = request.data.get('program_start_date')
+        program_end_date = request.data.get('program_end_date')
 
         if not client_id:
             return Response({'error': 'Client ID is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -803,8 +875,28 @@ class AssignTrainerDietitianView(APIView):
         # Also update client.role_assigned_on
         client.role_assigned_on = timezone.now().date()
         client.program_months = program_months
+        client.program_start_date = program_start_date
+        client.program_end_date = program_end_date
         client.amount = amount
         client.save()
+
+
+        try:
+            program = Program.objects.get(id=request.data.get('program_id'))
+        except Program.DoesNotExist:
+            return Response({'error': 'Program not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        ClientSubscription.objects.create(
+            client=client,
+            program=program,
+            program_months=program_months,
+            program_start_date=program_start_date,
+            program_end_date=program_end_date,
+            amount=amount,
+            subscription_type='new'
+        )
+
+
 
         return Response({'message': 'Trainer & Dietitian assigned successfully'}, status=status.HTTP_200_OK)
         
@@ -1238,3 +1330,79 @@ class DietGraphView(APIView):
             "bmi": bmi,
             "height": height
         })
+
+class BiweeklyDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+        updates = BiweeklyUpdations.objects.filter(client_id=client_id, dietitian_id=user).order_by('-update_date')
+
+        serializer = BiweeklyUpdationsSerializer(updates, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class BiweeklyDataUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, client_id):
+        week_no = int(request.data.get('week_no'))
+        notes = request.data.get('notes')
+        status = request.data.get('status') == 'true'
+        biweekly_id = request.data.get('biweekly_id')  # for updating existing row if week_no > 1
+        client = Client.objects.get(id=client_id)
+        dietitian = request.user
+
+        if week_no == 1:
+             # Insert initial row
+            first_row = BiweeklyUpdations.objects.create(
+                client=client,
+                dietitian_id=dietitian,
+                week_no=week_no,
+                notes=notes,
+                status=status,
+                update_date=date.today()
+            )
+
+            # Insert follow-up row
+            BiweeklyUpdations.objects.create(
+                client=client,
+                dietitian_id=dietitian,
+                week_no=week_no + 1,
+                notes=None,
+                status=False,
+                update_date=date.today() + timedelta(weeks=2)
+            )
+        else:
+            # Update current row
+            current_row = BiweeklyUpdations.objects.get(id=biweekly_id)
+            current_row.notes = notes
+            current_row.status = True
+            current_row.save()
+
+            # Insert new follow-up row
+            BiweeklyUpdations.objects.create(
+                client=client,
+                dietitian_id=dietitian,
+                week_no=week_no + 1,
+                notes=None,
+                status=False,
+                update_date=current_row.update_date + timedelta(weeks=2)
+            )
+
+        return Response({"message": "Biweekly data processed successfully"})
+    
+class CountBiweeklyUpdationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = date.today()
+        two_weeks_later = today + timedelta(days=14)
+
+        count = BiweeklyUpdations.objects.filter(
+            dietitian_id=user,
+            update_date__range=(today, two_weeks_later),
+            status = 0
+        ).count()
+
+        return Response({"upcoming_biweekly_count": count}, status=status.HTTP_200_OK)

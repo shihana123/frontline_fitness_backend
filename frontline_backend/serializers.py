@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -316,4 +316,9 @@ class WeeklyDietUpdateSerializer(serializers.ModelSerializer):
         uploaded_file.name = new_filename
 
         return super().create(validated_data)
+    
+class BiweeklyUpdationsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BiweeklyUpdations
+        fields = '__all__'
 
