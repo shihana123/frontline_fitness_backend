@@ -361,6 +361,38 @@ class MeetingsTDC(models.Model):
     def __str__(self):
         return self.client
 
+class MeetingTDCDetails(models.Model):
+    meetingtdc = models.ForeignKey(MeetingsTDC, on_delete=models.CASCADE)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+    change_dietplan = models.BooleanField(default=0)
+    uploaded = models.BooleanField(default=0)
+    diet_paln = models.CharField(max_length=255, null=True, blank=True)
+    diet_plan_uploaded_at = models.DateField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.meetingtdc
+
+class Measurementsclients(models.Model):
+    meetingtdc = models.ForeignKey(MeetingsTDC, on_delete=models.CASCADE)
+    chest = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    right_arm = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    left_arm = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    waist = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    hip = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    left_thigh = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    right_thigh = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    right_calf = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    left_calf = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.meetingtdc
+
 
 
 

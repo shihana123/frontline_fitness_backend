@@ -5,8 +5,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -1406,3 +1406,64 @@ class CountBiweeklyUpdationView(APIView):
         ).count()
 
         return Response({"upcoming_biweekly_count": count}, status=status.HTTP_200_OK)
+    
+class DietClientMeetingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+        meetings = MeetingsTDC.objects.filter(client_id=client_id, dietitian=user).order_by('meeting_date')
+        serializer = MeetingsTDCSerializer(meetings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class DietFirstConsultationDetails(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+
+        try:
+            consultation = DietitianConsultationDetails.objects.get(client_id=client_id, user=user)
+        except DietitianConsultationDetails.DoesNotExist:
+            return Response({'error': 'No consultation data found for this client.'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = DietitianConsultationDetailsSerializer(consultation)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class DietMeetingUpdationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        meeting_id = data.get('meeting_id')
+
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+        except MeetingsTDC.DoesNotExist:
+            return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Create Measurements entry
+        measurement = Measurementsclients.objects.create(
+            meetingtdc=meeting,
+            chest=data.get('chest', 0),
+            right_arm=data.get('right_arm', 0),
+            left_arm=data.get('left_arm', 0),
+            waist=data.get('waist', 0),
+            hip=data.get('hip', 0),
+            left_thigh=data.get('left_thigh', 0),
+            right_thigh=data.get('right_thigh', 0),
+            right_calf=data.get('right_calf', 0),
+            left_calf=data.get('left_calf', 0),
+        )
+
+        # Create MeetingTDCDetails entry if `diet_chart` is provided
+        diet_chart = data.get('diet_chart')
+        if diet_chart:
+            MeetingTDCDetails.objects.create(
+                meetingtdc=meeting,
+                diet_paln=diet_chart,
+                uploaded=True,
+                diet_plan_uploaded_at=date.today()
+            )
+
+        return Response({'message': 'Measurements and diet chart updated successfully.'}, status=status.HTTP_201_CREATED)

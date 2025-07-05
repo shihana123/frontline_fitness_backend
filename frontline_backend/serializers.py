@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -322,3 +322,12 @@ class BiweeklyUpdationsSerializer(serializers.ModelSerializer):
         model = BiweeklyUpdations
         fields = '__all__'
 
+class MeetingsTDCSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MeetingsTDC
+        fields = '__all__'
+
+class DietitianConsultationDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DietitianConsultationDetails
+        fields = '__all__'
