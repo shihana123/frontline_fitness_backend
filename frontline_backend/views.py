@@ -1,12 +1,12 @@
 # users/views.py
 
 from rest_framework import generics
-from django.db.models import Q, OuterRef, Subquery, Exists
+from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
 from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -1412,7 +1412,15 @@ class DietClientMeetingsView(APIView):
 
     def get(self, request, client_id):
         user = request.user
-        meetings = MeetingsTDC.objects.filter(client_id=client_id, dietitian=user).order_by('meeting_date')
+
+        meetings = MeetingsTDC.objects.filter(client_id=client_id, dietitian=user).annotate(
+            pending_first=Case(
+                When(status=False, then=Value(0)),
+                When(status=True, then=Value(1)),
+                output_field=IntegerField()
+            )
+        ).order_by('pending_first', 'meeting_date')
+
         serializer = MeetingsTDCSerializer(meetings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
@@ -1441,6 +1449,11 @@ class DietMeetingUpdationsView(APIView):
             meeting = MeetingsTDC.objects.get(id=meeting_id)
         except MeetingsTDC.DoesNotExist:
             return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # ✅ Update meeting status to 1
+        meeting.status = True
+        meeting.actual_meeting_date = date.today()
+        meeting.save()
 
         # Create Measurements entry
         measurement = Measurementsclients.objects.create(
@@ -1463,7 +1476,217 @@ class DietMeetingUpdationsView(APIView):
                 meetingtdc=meeting,
                 diet_paln=diet_chart,
                 uploaded=True,
+                change_dietplan=True,
+                notes=data.get('notes'),
                 diet_plan_uploaded_at=date.today()
             )
 
         return Response({'message': 'Measurements and diet chart updated successfully.'}, status=status.HTTP_201_CREATED)
+    
+class MeetingDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, meeting_id):
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+        except MeetingsTDC.DoesNotExist:
+            return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Serialize meeting
+        meeting_data = MeetingsTDCSerializer(meeting).data
+
+        # Serialize related measurements (should only be one per meeting)
+        try:
+            measurement = Measurementsclients.objects.get(meetingtdc=meeting)
+            measurement_data = MeasurementsclientsSerializer(measurement).data
+        except Measurementsclients.DoesNotExist:
+            measurement_data = {}
+
+        # Serialize related meeting details
+        try:
+            details = MeetingTDCDetails.objects.get(meetingtdc=meeting)
+            details_data = MeetingTDCDetailsSerializer(details).data
+        except MeetingTDCDetails.DoesNotExist:
+            details_data = {}
+
+        return Response({
+            'meeting': meeting_data,
+            'measurements': measurement_data,
+            'diet_details': details_data
+        }, status=status.HTTP_200_OK)
+
+
+class RemidersListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        today = timezone.now().date()
+        two_days_ahead = today + timedelta(days=2)
+
+        # Filter base queryset
+        base_qs = MeetingsTDC.objects.filter(
+            dietitian=user,
+            status=False,
+        ).filter(
+            Q(need_meeting=1) | Q(need_meeting=2)
+        ).exclude(meeting_type='day_1')  # skip day_1 if needed
+
+        # 1. Upcoming within 2 days
+        upcoming_meetings = base_qs.filter(meeting_date__range=(today, two_days_ahead))
+
+        # 2. Missed/Expired
+        expired_meetings = base_qs.filter(meeting_date__lt=today)
+
+        # Group by meeting_type
+        def group_by_type(queryset):
+            data = {}
+            for meeting in queryset:
+                mtype = meeting.meeting_type
+                if mtype not in data:
+                    data[mtype] = []
+                data[mtype].append({
+                    'id': meeting.id,
+                    'client': meeting.client.name,
+                    'meeting_date': meeting.meeting_date,
+                    'status': meeting.status,
+                    'day_no': meeting.day_no,
+                    'need_meeting': meeting.need_meeting
+                })
+            return data
+
+        return Response({
+            'upcoming': group_by_type(upcoming_meetings),
+            'expired': group_by_type(expired_meetings)
+        })
+    
+class UpdateMeetingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, update, meeting_id):
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+
+            # Update need_meeting field
+            if update == "yes":
+                meeting.need_meeting = 2
+            else:
+                meeting.need_meeting = 0
+            meeting.save()
+
+            # Add a record to MeetingTDCDetails
+            if update == "no":
+                MeetingTDCDetails.objects.create(
+                    meetingtdc=meeting,
+                    notes="no need of meeting",
+                    change_dietplan=False,
+                    uploaded=False,
+                    diet_plan_uploaded_at=timezone.now().date()
+                )
+
+            return Response({"message": "Meeting updated successfully."})
+
+        except MeetingsTDC.DoesNotExist:
+            return Response({"error": "Meeting not found."}, status=404)
+
+class DietOnlyMeetingUpdationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        meeting_id = request.data.get('meeting_id')
+        diet_chart = request.FILES.get('diet_chart')  # file if uploaded
+
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+        except MeetingsTDC.DoesNotExist:
+            return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # 1. Update MeetingsTDC
+        meeting.status = True
+        meeting.actual_meeting_date = timezone.now().date()
+        meeting.save()
+
+        # 2. Create MeetingTDCDetails row
+        meeting_details = MeetingTDCDetails.objects.create(
+            meetingtdc=meeting,
+            notes=request.data.get('notes'),
+            change_dietplan=True,
+            uploaded=bool(diet_chart),
+            diet_paln=diet_chart.name if diet_chart else '',
+            diet_plan_uploaded_at=timezone.now().date() if diet_chart else None
+        )
+
+        # 3. Save file if needed
+        if diet_chart:
+            meeting_details.diet_paln = diet_chart
+            meeting_details.save()
+
+        return Response({'message': 'Meeting updated successfully'}, status=status.HTTP_200_OK)
+    
+class FetchMeetingDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, meeting_id):
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+        except MeetingsTDC.DoesNotExist:
+            return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        meeting_data = MeetingsTDCSerializer(meeting).data
+
+        # Get all meeting details related to this meeting
+        meeting_details = MeetingTDCDetails.objects.filter(meetingtdc=meeting)
+        meeting_details_data = MeetingTDCDetailsSerializer(meeting_details, many=True).data
+
+        return Response({
+            'meeting': meeting_data,
+            'meeting_details': meeting_details_data
+        }, status=status.HTTP_200_OK)
+
+class TDCMeetingUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        meeting_id = request.data.get('meeting_id')
+        notes = request.data.get('notes')
+        show_diet_chart = request.data.get('showDietChart')
+        diet_chart = request.FILES.get('diet_chart')
+
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+
+            # Update MeetingsTDC
+            meeting.status = True
+            meeting.actual_meeting_date = date.today()
+            meeting.save()
+
+            # Determine logic for MeetingTDCDetails
+            change_dietplan = False
+            uploaded = False
+            diet_plan_uploaded_at = None
+            diet_paln = None
+
+            if show_diet_chart == 'true' or show_diet_chart is True:
+                change_dietplan = True
+                if diet_chart:
+                    uploaded = True
+                    diet_paln = diet_chart.name
+                    diet_plan_uploaded_at = date.today()
+
+            # Create MeetingTDCDetails row
+            MeetingTDCDetails.objects.create(
+                meetingtdc=meeting,
+                notes=notes,
+                change_dietplan=change_dietplan,
+                uploaded=uploaded,
+                diet_paln=diet_paln,
+                diet_plan_uploaded_at=diet_plan_uploaded_at
+            )
+
+            return Response({'message': 'Meeting updated successfully'}, status=status.HTTP_200_OK)
+
+        except MeetingsTDC.DoesNotExist:
+            return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    

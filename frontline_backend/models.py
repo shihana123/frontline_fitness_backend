@@ -354,6 +354,7 @@ class MeetingsTDC(models.Model):
     status = models.BooleanField(default=False)
     meeting_date = models.DateField(null=True, blank=True)
     actual_meeting_date = models.DateField(null=True, blank=True)
+    need_meeting = models.IntegerField(default=1)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
