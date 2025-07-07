@@ -337,6 +337,38 @@ class MeetingTDCDetailsSerializer(serializers.ModelSerializer):
         model = MeetingTDCDetails
         fields = '__all__'
 
+class MeetingTDCDetailswithDietSerializer(serializers.ModelSerializer):
+    meeting_date = serializers.DateField(source='meetingtdc.meeting_date', read_only=True)
+    meeting_type = serializers.CharField(source='meetingtdc.meeting_type', read_only=True)
+
+    class Meta:
+        model = MeetingTDCDetails
+        fields = [
+            'id',
+            'notes',
+            'change_dietplan',
+            'uploaded',
+            'diet_paln',
+            'diet_plan_uploaded_at',
+            'meeting_date',     # 👈 From related model
+            'meeting_type',     # 👈 Optional: add other useful fields
+        ]
+
+class MeetingsTDCWithDetailsSerializer(serializers.ModelSerializer):
+    meeting_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MeetingsTDC
+        fields = '__all__'  # or list fields manually
+        depth = 1
+
+    def get_meeting_details(self, obj):
+        try:
+            detail = MeetingTDCDetails.objects.get(meetingtdc=obj)
+            return MeetingTDCDetailsSerializer(detail).data
+        except MeetingTDCDetails.DoesNotExist:
+            return None
+
 class MeasurementsclientsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Measurementsclients

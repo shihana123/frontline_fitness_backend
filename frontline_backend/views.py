@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
 from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -19,6 +19,7 @@ from django.utils.dateparse import parse_time
 from django.utils.timezone import now
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models.functions import ExtractMonth
+from django.core.exceptions import ObjectDoesNotExist
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -1901,3 +1902,40 @@ class MeasurementProgressView(APIView):
                 continue
 
         return Response(data, status=status.HTTP_200_OK)
+
+class DietChartListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        meeting_details = MeetingTDCDetails.objects.filter(meetingtdc__client_id=client_id)
+        serializer = MeetingTDCDetailswithDietSerializer(meeting_details, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class DietChartUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        dietchart_id = request.data.get('dietchart_id')
+        notes = request.data.get('notes')
+        diet_chart_file = request.FILES.get('diet_chart')
+
+        if not dietchart_id:
+            return Response({'error': 'dietchart_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            meeting_detail = MeetingTDCDetails.objects.get(id=dietchart_id)
+        except ObjectDoesNotExist:
+            return Response({'error': 'MeetingTDCDetails not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # ✅ Update fields
+        if notes:
+            meeting_detail.notes = notes
+
+        if diet_chart_file:
+            meeting_detail.diet_paln = diet_chart_file
+            meeting_detail.uploaded = True
+            meeting_detail.diet_plan_uploaded_at = date.today()
+
+        meeting_detail.save()
+
+        return Response({'message': 'Diet chart updated successfully'}, status=status.HTTP_200_OK)
