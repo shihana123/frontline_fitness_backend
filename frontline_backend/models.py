@@ -355,6 +355,7 @@ class MeetingsTDC(models.Model):
     meeting_date = models.DateField(null=True, blank=True)
     actual_meeting_date = models.DateField(null=True, blank=True)
     need_meeting = models.IntegerField(default=1)
+    measurements = models.BooleanField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -394,6 +395,23 @@ class Measurementsclients(models.Model):
     def __str__(self):
         return self.meetingtdc
 
+class WeeklyMeeting(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    dietitian_id = models.ForeignKey(User, on_delete=models.CASCADE, default=1)
+    height = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    weight = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    bmi = models.DecimalField(max_digits=5, decimal_places=2, default=0, blank=True)
+    notes = models.CharField(max_length=255, null=True)
+    week_no = models.IntegerField(default=1)
+    meeting_date = models.DateField(null=True, blank=True)
+    entered_date = models.DateField(null=True, blank=True)
+    status = models.BooleanField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.meetingtdc
 
 
 

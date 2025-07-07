@@ -5,8 +5,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, I
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -292,6 +292,14 @@ class DietitianConsultationDetailsView(APIView):
             # Create meeting records
             for i, day in enumerate(meeting_days):
                 meeting_date = start_date + timedelta(days=day - 1)
+                meeting_type = self.get_meeting_type(day, i, len(meeting_days))
+
+                # Measurements condition
+                measurements = False
+                if program_type == 'Group' and meeting_type in ['TDC', 'Renewal']:
+                    measurements = True
+                elif program_type == 'Personal Training' and meeting_type in ['TDC', 'Renewal'] and (i % 2 == 0):
+                    measurements = True
                 MeetingsTDC.objects.create(
                     client=client,
                     trainer=trainer,
@@ -300,7 +308,34 @@ class DietitianConsultationDetailsView(APIView):
                     day_no=day,
                     status=(day == 1),  # Only first day is completed
                     meeting_date=meeting_date,
-                    actual_meeting_date=None
+                    actual_meeting_date=None,
+                    measurements=measurements
+                )
+
+            def get_saturdays(start_date, end_date):
+                saturdays = []
+                current_date = start_date
+                while current_date <= end_date:
+                    if current_date.weekday() == 5:  # Saturday
+                        saturdays.append(current_date)
+                    current_date += timedelta(days=1)
+                return saturdays
+
+            # Get all Saturdays
+            saturdays = get_saturdays(start_date, end_date)
+
+            # Create WeeklyMeeting records
+            for week_no, sat_date in enumerate(saturdays, start=1):
+                WeeklyMeeting.objects.create(
+                    client=client,
+                    dietitian_id=dietitian,
+                    height=0,
+                    weight=0,
+                    bmi=0,
+                    notes=None,
+                    week_no=week_no,
+                    meeting_date=sat_date,
+                    entered_date=None
                 )
 
 
@@ -1572,6 +1607,7 @@ class UpdateMeetingView(APIView):
                 meeting.need_meeting = 2
             else:
                 meeting.need_meeting = 0
+                meeting.status = 1
             meeting.save()
 
             # Add a record to MeetingTDCDetails
@@ -1690,3 +1726,57 @@ class TDCMeetingUpdateView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
+class WeeklyMeetingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user  # Logged-in user
+        meetings = WeeklyMeeting.objects.filter(client_id=client_id, dietitian_id=user).order_by('week_no')
+
+        serializer = WeeklyMeetingSerializer(meetings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class UpdateWeeklyMeeting(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        meeting_id = request.data.get('meeting_id')
+        try:
+            weekly_meeting = WeeklyMeeting.objects.get(id=meeting_id)
+        except WeeklyMeeting.DoesNotExist:
+            return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        weekly_meeting.height = request.data.get('height', 0)
+        weekly_meeting.weight = request.data.get('weight', 0)
+        weekly_meeting.bmi = request.data.get('bmi', 0)
+        weekly_meeting.notes = request.data.get('notes', '')
+        weekly_meeting.status = True
+        weekly_meeting.entered_date = date.today()
+        weekly_meeting.save()
+
+        return Response({'message': 'Weekly meeting updated successfully'}, status=status.HTTP_200_OK)
+    
+class WeeklyMeetingDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, meeting_id):
+        try:
+            meeting = WeeklyMeeting.objects.get(id=meeting_id, dietitian_id=request.user)
+            serializer = WeeklyMeetingSerializer(meeting)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except WeeklyMeeting.DoesNotExist:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+class WeeklyMeetingByWeekNoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        client_id = request.GET.get('client_id')
+        week_no = request.GET.get('week_no')
+
+        try:
+            meeting = WeeklyMeeting.objects.get(client_id=client_id, week_no=week_no, dietitian_id=request.user.id)
+            serializer = WeeklyMeetingSerializer(meeting)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except WeeklyMeeting.DoesNotExist:
+            return Response({'error': 'Previous meeting not found'}, status=status.HTTP_404_NOT_FOUND)
