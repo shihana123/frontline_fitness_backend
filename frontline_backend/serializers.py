@@ -346,3 +346,4 @@ class WeeklyMeetingSerializer(serializers.ModelSerializer):
     class Meta:
         model = WeeklyMeeting
         fields = '__all__'
+

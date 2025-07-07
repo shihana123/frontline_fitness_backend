@@ -1,7 +1,7 @@
 # users/views.py
 
 from rest_framework import generics
-from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField
+from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
@@ -296,11 +296,16 @@ class DietitianConsultationDetailsView(APIView):
 
                 # Measurements condition
                 measurements = False
-                if program_type == 'Group' and meeting_type in ['TDC', 'Renewal']:
+                measurements = False
+                if meeting_type == 'Renewal':
                     measurements = True
-                elif program_type == 'Personal Training' and meeting_type in ['TDC', 'Renewal'] and (i % 2 == 0):
+                elif meeting_type == 'dietchart':
                     measurements = True
-                MeetingsTDC.objects.create(
+                elif program_type == 'Group' and meeting_type in ['TDC']:
+                    measurements = True
+                elif program_type == 'Personal Training' and meeting_type == 'TDC' and (i % 2 == 0):
+                    measurements = True
+                meeting = MeetingsTDC.objects.create(
                     client=client,
                     trainer=trainer,
                     dietitian=dietitian,
@@ -311,6 +316,11 @@ class DietitianConsultationDetailsView(APIView):
                     actual_meeting_date=None,
                     measurements=measurements
                 )
+
+                if measurements:
+                    Measurementsclients.objects.create(
+                        meetingtdc=meeting
+                    )
 
             def get_saturdays(start_date, end_date):
                 saturdays = []
@@ -1490,19 +1500,22 @@ class DietMeetingUpdationsView(APIView):
         meeting.actual_meeting_date = date.today()
         meeting.save()
 
-        # Create Measurements entry
-        measurement = Measurementsclients.objects.create(
-            meetingtdc=meeting,
-            chest=data.get('chest', 0),
-            right_arm=data.get('right_arm', 0),
-            left_arm=data.get('left_arm', 0),
-            waist=data.get('waist', 0),
-            hip=data.get('hip', 0),
-            left_thigh=data.get('left_thigh', 0),
-            right_thigh=data.get('right_thigh', 0),
-            right_calf=data.get('right_calf', 0),
-            left_calf=data.get('left_calf', 0),
-        )
+        # Update Measurements entry
+        try:
+            measurement = Measurementsclients.objects.get(meetingtdc=meeting)
+            measurement.chest = data.get('chest', 0)
+            measurement.right_arm = data.get('right_arm', 0)
+            measurement.left_arm = data.get('left_arm', 0)
+            measurement.waist = data.get('waist', 0)
+            measurement.hip = data.get('hip', 0)
+            measurement.left_thigh = data.get('left_thigh', 0)
+            measurement.right_thigh = data.get('right_thigh', 0)
+            measurement.right_calf = data.get('right_calf', 0)
+            measurement.left_calf = data.get('left_calf', 0)
+            measurement.updated_date = date.today()
+            measurement.save()
+        except Measurementsclients.DoesNotExist:
+            return Response({'error': 'Measurements entry not found for this meeting.'}, status=status.HTTP_404_NOT_FOUND)
 
         # Create MeetingTDCDetails entry if `diet_chart` is provided
         diet_chart = data.get('diet_chart')
@@ -1780,3 +1793,111 @@ class WeeklyMeetingByWeekNoView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except WeeklyMeeting.DoesNotExist:
             return Response({'error': 'Previous meeting not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+class MeasurementListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+
+        measurements = Measurementsclients.objects.filter(
+            meetingtdc__client_id=client_id,
+            meetingtdc__dietitian=user
+        ).annotate(
+            is_pending=Case(
+                When(updated_date__isnull=True, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField()
+            )
+        ).order_by('-is_pending', 'meetingtdc__meeting_date')  # pending (null) first, then by date
+
+        data = [
+            {
+                'measurement_id': m.id,
+                'meeting_id': m.meetingtdc.id,
+                'meeting_date': m.meetingtdc.meeting_date,
+                'updated_date': m.updated_date,
+                'chest': m.chest,
+                'right_arm': m.right_arm,
+                'left_arm': m.left_arm,
+                'waist': m.waist,
+                'hip': m.hip,
+                'left_thigh': m.left_thigh,
+                'right_thigh': m.right_thigh,
+                'right_calf': m.right_calf,
+                'left_calf': m.left_calf,
+            }
+            for m in measurements
+        ]
+
+        return Response(data, status=status.HTTP_200_OK)
+    
+class MeasurementDataUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data
+        meeting_id = data.get('meeting_id')
+
+        # Update Measurements entry
+        try:
+            measurement = Measurementsclients.objects.get(id=meeting_id)
+            measurement.chest = data.get('chest', 0)
+            measurement.right_arm = data.get('right_arm', 0)
+            measurement.left_arm = data.get('left_arm', 0)
+            measurement.waist = data.get('waist', 0)
+            measurement.hip = data.get('hip', 0)
+            measurement.left_thigh = data.get('left_thigh', 0)
+            measurement.right_thigh = data.get('right_thigh', 0)
+            measurement.right_calf = data.get('right_calf', 0)
+            measurement.left_calf = data.get('left_calf', 0)
+            measurement.updated_date = date.today()
+            measurement.save()
+        except Measurementsclients.DoesNotExist:
+            return Response({'error': 'Measurements entry not found for this meeting.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response({'message': 'Measurements and diet chart updated successfully.'}, status=status.HTTP_201_CREATED)
+
+class MeasurementDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, meeting_id):
+        try:
+            measurement = Measurementsclients.objects.get(id=meeting_id)
+        except Measurementsclients.DoesNotExist:
+            return Response({'error': 'Measurement not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = MeasurementsclientsSerializer(measurement)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class MeasurementProgressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        # Get meetings with measurements=True for the logged-in dietitian and specific client
+        meetings = MeetingsTDC.objects.filter(
+            client_id=client_id,
+            dietitian=request.user,
+            measurements=True
+        ).order_by('meeting_date')
+
+        data = []
+        for meeting in meetings:
+            try:
+                measure = Measurementsclients.objects.get(meetingtdc=meeting)
+                data.append({
+                    'meeting_date': meeting.meeting_date,
+                    'chest': measure.chest,
+                    'right_arm': measure.right_arm,
+                    'left_arm': measure.left_arm,
+                    'waist': measure.waist,
+                    'hip': measure.hip,
+                    'left_thigh': measure.left_thigh,
+                    'right_thigh': measure.right_thigh,
+                    'right_calf': measure.right_calf,
+                    'left_calf': measure.left_calf,
+                })
+            except Measurementsclients.DoesNotExist:
+                continue
+
+        return Response(data, status=status.HTTP_200_OK)
