@@ -110,6 +110,8 @@ class Client(models.Model):
     program_start_date = models.DateField(null=True, blank=True)
     program_end_date = models.DateField(null=True, blank=True)
     amount = models.CharField(max_length=20,null=True, blank=True)
+    paused = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
     
@@ -337,6 +339,8 @@ class ClientSubscription(models.Model):
     program_end_date = models.DateField(null=True, blank=True)
     amount = models.CharField(max_length=20,null=True, blank=True)
     subscription_type = models.CharField(max_length=120, default='new') # new/renewal
+    subscription_id = models.CharField(max_length=20, null=True, unique=True)
+    program_type = models.CharField(max_length=70, null=True, blank=True)
 
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -412,7 +416,54 @@ class WeeklyMeeting(models.Model):
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
-        return self.meetingtdc
+        return self.client
+    
+class ClientPause(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    subscription_id = models.CharField(max_length=120, null=True)
+    type = models.CharField(max_length=120, null=True, default='Paused') #Paused, Activated
+    paused_at = models.DateTimeField(null=True, blank=True)
+    paused_from = models.DateField(null=True, blank=True)
+    paused_to = models.DateField(null=True, blank=True)
+    no_of_days = models.IntegerField(null=True, default=1)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+    program_end_date = models.DateField(null=True, blank=True)
+    program_end_date_changed = models.DateField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.client
+
+class ClientPauseLimit(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    subscription_months = models.IntegerField(null=True, default=1)
+    no_of_days_available = models.IntegerField(null=True, default=0)
+    no_of_pauses_available = models.IntegerField(null=True, default=0)
+    no_of_paused_days = models.IntegerField(null=True, default=0)
+    no_of_pauses_taken = models.IntegerField(null=True, default=0)
+    no_of_pause_days_rem = models.IntegerField(null=True, default=0)
+    no_of_pause_rem = models.IntegerField(null=True, default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.client
+
+class SubscriptionPause(models.Model):
+    subscription_months = models.IntegerField(null=True, default=1)
+    no_of_pauses = models.IntegerField(null=True, default=0)
+    no_of_days = models.IntegerField(null=True, default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return 'subscription pause count added'
+    
+
 
 
 

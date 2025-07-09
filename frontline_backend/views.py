@@ -5,7 +5,7 @@ from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, I
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause
 from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
@@ -399,12 +399,56 @@ class ClientListView(APIView):
         return Response(serializer.data)
     
 class DietitianClientListView(APIView):
+    # permission_classes = [IsAuthenticated]
+    # def get(self, request):
+    #     user = request.user.id
+    #     clients = Client.objects.filter(new_client=False, programs__dietitian_id = user).distinct()
+    #     serializer =ClientSerializer(clients, many=True)
+    #     return Response(serializer.data)
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         user = request.user.id
-        clients = Client.objects.filter(new_client=False, programs__dietitian_id = user).distinct()
-        serializer =ClientSerializer(clients, many=True)
-        return Response(serializer.data)
+        clients = Client.objects.filter(new_client=False, programs__dietitian_id=user).distinct()
+
+        client_data = []
+
+        for client in clients:
+            pause_info = {
+                'pause_available': False,
+                'pause_days_remaining': 0,
+                'pauses_remaining': 0
+            }
+
+            # Get latest subscription
+            latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
+            if latest_subscription and latest_subscription.program_type == 'Personal Training':
+                sub_months = latest_subscription.program_months
+
+                # Get rule from SubscriptionPause
+                try:
+                    rule = SubscriptionPause.objects.get(subscription_months=sub_months)
+                except SubscriptionPause.DoesNotExist:
+                    rule = None
+
+                if rule:
+                    # Check if this client already has a pause record
+                    try:
+                        pause_limit = ClientPauseLimit.objects.get(client=client)
+                        pause_info['pause_available'] = pause_limit.no_of_pause_rem > 0
+                        pause_info['pause_days_remaining'] = pause_limit.no_of_pause_days_rem
+                        pause_info['pauses_remaining'] = pause_limit.no_of_pause_rem
+                    except ClientPauseLimit.DoesNotExist:
+                        # No pause taken yet, so all pause days are available
+                        pause_info['pause_available'] = True
+                        pause_info['pause_days_remaining'] = rule.no_of_days
+                        pause_info['pauses_remaining'] = rule.no_of_pauses
+
+            serialized = ClientSerializer(client).data
+            serialized['pause_info'] = pause_info
+            client_data.append(serialized)
+
+        return Response(client_data)
 
 class SalesClientListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -932,6 +976,11 @@ class AssignTrainerDietitianView(APIView):
         except Program.DoesNotExist:
             return Response({'error': 'Program not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Count current subscriptions
+        count = ClientSubscription.objects.count() + 1  # +1 for the next one
+        subscription_id = f"CLN{str(count).zfill(3)}"  # Pads with zeros (e.g., CLN001)
+
+
         ClientSubscription.objects.create(
             client=client,
             program=program,
@@ -939,11 +988,9 @@ class AssignTrainerDietitianView(APIView):
             program_start_date=program_start_date,
             program_end_date=program_end_date,
             amount=amount,
-            subscription_type='new'
+            subscription_type='new',
+            subscription_id=subscription_id  # ✅ Set the new formatted ID
         )
-
-
-
         return Response({'message': 'Trainer & Dietitian assigned successfully'}, status=status.HTTP_200_OK)
         
 class followupStatusUpdateView(APIView):
@@ -1939,3 +1986,194 @@ class DietChartUpdateView(APIView):
         meeting_detail.save()
 
         return Response({'message': 'Diet chart updated successfully'}, status=status.HTTP_200_OK)
+    
+class PauseClientDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        try:
+            client = Client.objects.get(id=client_id)
+        except Client.DoesNotExist:
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get latest subscription
+        latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
+        if not latest_subscription:
+            return Response({'error': 'No subscription found for this client'}, status=status.HTTP_404_NOT_FOUND)
+
+        if latest_subscription.program_type != 'Personal Training':
+            return Response({'error': 'Pause only available for Personal Training clients'}, status=status.HTTP_400_BAD_REQUEST)
+
+        sub_months = latest_subscription.program_months
+
+        # Get pause policy
+        try:
+            pause_policy = SubscriptionPause.objects.get(subscription_months=sub_months)
+        except SubscriptionPause.DoesNotExist:
+            return Response({'error': 'No pause policy defined for this subscription length'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get pause usage data (if exists)
+        try:
+            pause_record = ClientPauseLimit.objects.get(client=client)
+            pause_data = {
+                'total_days_allowed': pause_policy.no_of_days,
+                'total_pauses_allowed': pause_policy.no_of_pauses,
+                'days_used': pause_record.no_of_paused_days,
+                'pauses_used': pause_record.no_of_pauses_taken,
+                'days_remaining': pause_record.no_of_pause_days_rem,
+                'pauses_remaining': pause_record.no_of_pause_rem,
+            }
+        except ClientPauseLimit.DoesNotExist:
+            # No pause taken yet
+            pause_data = {
+                'total_days_allowed': pause_policy.no_of_days,
+                'total_pauses_allowed': pause_policy.no_of_pauses,
+                'days_used': 0,
+                'pauses_used': 0,
+                'days_remaining': pause_policy.no_of_days,
+                'pauses_remaining': pause_policy.no_of_pauses,
+            }
+
+        return Response({
+            'client_id': client.id,
+            'client_name': client.name,
+            'pause_summary': pause_data
+        })
+    
+class PauseClientView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        client_id = request.data.get('client_id')
+        pause_days = int(request.data.get('pause_days', 0))
+        pause_from = request.data.get('pause_from')
+        notes = request.data.get('notes', '')
+
+        try:
+            client = Client.objects.get(id=client_id)
+        except Client.DoesNotExist:
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
+        if not latest_subscription:
+            return Response({'error': 'No subscription found'}, status=status.HTTP_404_NOT_FOUND)
+
+        subscription_id = latest_subscription.subscription_id
+        program_months = latest_subscription.program_months
+
+        try:
+            pause_policy = SubscriptionPause.objects.get(subscription_months=program_months)
+        except SubscriptionPause.DoesNotExist:
+            return Response({'error': 'Pause policy not found for this subscription'}, status=status.HTTP_404_NOT_FOUND)
+
+        paused_from_date = datetime.strptime(pause_from, "%Y-%m-%d").date() if pause_from else datetime.today().date()
+        paused_to_date = paused_from_date + timedelta(days=pause_days)
+
+        # 👉 Get original program end date and calculate extended one
+        program_end_date = latest_subscription.program_end_date
+        if not program_end_date:
+            return Response({'error': 'Subscription missing end date'}, status=status.HTTP_400_BAD_REQUEST)
+
+        program_end_date_changed = program_end_date + timedelta(days=pause_days)
+
+        # ✅ Save ClientPause with both dates
+        ClientPause.objects.create(
+            client=client,
+            subscription_id=subscription_id,
+            type='Paused',
+            paused_at=datetime.now(),
+            paused_from=paused_from_date,
+            paused_to=paused_to_date,
+            no_of_days=pause_days,
+            notes=notes,
+            program_end_date=program_end_date,
+            program_end_date_changed=program_end_date_changed
+        )
+
+        # ClientPauseLimit handling
+        pause_limit, created = ClientPauseLimit.objects.get_or_create(client=client, defaults={
+            'subscription_months': program_months,
+            'no_of_days_available': pause_policy.no_of_days,
+            'no_of_pauses_available': pause_policy.no_of_pauses,
+            'no_of_paused_days': pause_days,
+            'no_of_pauses_taken': 1,
+            'no_of_pause_days_rem': pause_policy.no_of_days - pause_days,
+            'no_of_pause_rem': pause_policy.no_of_pauses - 1
+        })
+
+        if not created:
+            if pause_limit.no_of_pause_rem <= 0 or pause_limit.no_of_pause_days_rem < pause_days:
+                return Response({'error': 'No more pause days or counts left'}, status=status.HTTP_400_BAD_REQUEST)
+
+            pause_limit.no_of_paused_days += pause_days
+            pause_limit.no_of_pauses_taken += 1
+            pause_limit.no_of_pause_days_rem -= pause_days
+            pause_limit.no_of_pause_rem -= 1
+            pause_limit.save()
+
+        # Mark client as paused
+        client.paused = True
+        client.save()
+
+        # ✅ Update MeetingsTDC: Shift meeting_date for status=False by pause_days
+        future_meetings = MeetingsTDC.objects.filter(client=client, status=False)
+        for meeting in future_meetings:
+            if meeting.meeting_date:
+                meeting.meeting_date = meeting.meeting_date + timedelta(days=pause_days)
+            meeting.dietitian_id = request.user.id
+            meeting.save()
+
+        # ✅ Update WeeklyMeeting: Shift all meeting_date by pause_days
+        weekly_meetings = WeeklyMeeting.objects.filter(client=client)
+        for weekly in weekly_meetings:
+            if weekly.meeting_date:
+                weekly.meeting_date = weekly.meeting_date + timedelta(days=pause_days)
+                weekly.save()
+
+        return Response({'message': 'Client paused successfully.'}, status=status.HTTP_200_OK)
+
+class PauseClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.id
+        clients = Client.objects.filter(new_client=False, programs__dietitian_id=user, paused=True).distinct()
+
+        client_data = []
+
+        for client in clients:
+            pause_info = {
+                'pause_available': False,
+                'pause_days_remaining': 0,
+                'pauses_remaining': 0
+            }
+
+            # Get latest subscription
+            latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
+            if latest_subscription and latest_subscription.program_type == 'Personal Training':
+                sub_months = latest_subscription.program_months
+
+                # Get rule from SubscriptionPause
+                try:
+                    rule = SubscriptionPause.objects.get(subscription_months=sub_months)
+                except SubscriptionPause.DoesNotExist:
+                    rule = None
+
+                if rule:
+                    # Check if this client already has a pause record
+                    try:
+                        pause_limit = ClientPauseLimit.objects.get(client=client)
+                        pause_info['pause_available'] = pause_limit.no_of_pause_rem > 0
+                        pause_info['pause_days_remaining'] = pause_limit.no_of_pause_days_rem
+                        pause_info['pauses_remaining'] = pause_limit.no_of_pause_rem
+                    except ClientPauseLimit.DoesNotExist:
+                        # No pause taken yet, so all pause days are available
+                        pause_info['pause_available'] = True
+                        pause_info['pause_days_remaining'] = rule.no_of_days
+                        pause_info['pauses_remaining'] = rule.no_of_pauses
+
+            serialized = ClientSerializer(client).data
+            serialized['pause_info'] = pause_info
+            client_data.append(serialized)
+
+        return Response(client_data)
