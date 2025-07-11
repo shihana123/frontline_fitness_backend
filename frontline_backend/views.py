@@ -1,6 +1,7 @@
 # users/views.py
 
 from rest_framework import generics
+from django.db import models
 from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField
 from rest_framework.views import APIView
 from rest_framework import status
@@ -1620,22 +1621,32 @@ class RemidersListView(APIView):
         today = timezone.now().date()
         two_days_ahead = today + timedelta(days=2)
 
-        # Filter base queryset
-        base_qs = MeetingsTDC.objects.filter(
+        # === 1. MeetingsTDC ===
+        base_tdc_qs = MeetingsTDC.objects.filter(
             dietitian=user,
             status=False,
         ).filter(
             Q(need_meeting=1) | Q(need_meeting=2)
-        ).exclude(meeting_type='day_1')  # skip day_1 if needed
+        ).exclude(meeting_type='day_1')
 
-        # 1. Upcoming within 2 days
-        upcoming_meetings = base_qs.filter(meeting_date__range=(today, two_days_ahead))
+        tdc_upcoming = base_tdc_qs.filter(meeting_date__range=(today, two_days_ahead))
+        tdc_expired = base_tdc_qs.filter(meeting_date__lt=today)
 
-        # 2. Missed/Expired
-        expired_meetings = base_qs.filter(meeting_date__lt=today)
+        # === 2. Weekly Meetings (Weekly is on Saturday, reminder is on Friday) ===
+        weekly_qs = WeeklyMeeting.objects.filter(dietitian_id=user, status=False)
+        weekly_upcoming = weekly_qs.filter(meeting_date=today + timedelta(days=1))  # Friday reminder for Saturday
+        weekly_expired = weekly_qs.filter(meeting_date__lt=today)
 
-        # Group by meeting_type
-        def group_by_type(queryset):
+        # === 3. Measurements Clients (based on related meetingtdc)
+        measurement_upcoming = Measurementsclients.objects.filter(
+            meetingtdc__in=tdc_upcoming
+        )
+        measurement_expired = Measurementsclients.objects.filter(
+            meetingtdc__in=tdc_expired
+        )
+
+        # Grouping helpers
+        def group_tdc(queryset):
             data = {}
             for meeting in queryset:
                 mtype = meeting.meeting_type
@@ -1647,13 +1658,54 @@ class RemidersListView(APIView):
                     'meeting_date': meeting.meeting_date,
                     'status': meeting.status,
                     'day_no': meeting.day_no,
-                    'need_meeting': meeting.need_meeting
+                    'need_meeting': meeting.need_meeting,
+                    'meeting_model': 'TDC'
                 })
             return data
 
+        def group_weekly(queryset):
+            key = 'Weekly'
+            return {
+                key: [
+                    {
+                        'id': meeting.id,
+                        'client': meeting.client.name,
+                        'meeting_date': meeting.meeting_date,
+                        'status': meeting.status,
+                        'week_no': meeting.week_no,
+                        'meeting_model': 'Weekly'
+                    } for meeting in queryset
+                ]
+            }
+
+        def group_measurements(queryset):
+            key = 'Measurements'
+            return {
+                key: [
+                    {
+                        'id': m.id,
+                        'client': m.meetingtdc.client.name,
+                        'meeting_id': m.meetingtdc.id,
+                        'meeting_date': m.meetingtdc.meeting_date,
+                        'status': m.meetingtdc.status,
+                        'updated_date': m.updated_date,
+                        'meeting_model': 'Measurements'
+                    } for m in queryset
+                ]
+            }
+
+        # Final response
         return Response({
-            'upcoming': group_by_type(upcoming_meetings),
-            'expired': group_by_type(expired_meetings)
+            'upcoming': {
+                **group_tdc(tdc_upcoming),
+                **group_weekly(weekly_upcoming),
+                **group_measurements(measurement_upcoming)
+            },
+            'expired': {
+                **group_tdc(tdc_expired),
+                **group_weekly(weekly_expired),
+                **group_measurements(measurement_expired)
+            }
         })
     
 class UpdateMeetingView(APIView):
@@ -2066,17 +2118,17 @@ class PauseClientView(APIView):
         except SubscriptionPause.DoesNotExist:
             return Response({'error': 'Pause policy not found for this subscription'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Dates
         paused_from_date = datetime.strptime(pause_from, "%Y-%m-%d").date() if pause_from else datetime.today().date()
         paused_to_date = paused_from_date + timedelta(days=pause_days)
-
-        # 👉 Get original program end date and calculate extended one
         program_end_date = latest_subscription.program_end_date
         if not program_end_date:
             return Response({'error': 'Subscription missing end date'}, status=status.HTTP_400_BAD_REQUEST)
 
         program_end_date_changed = program_end_date + timedelta(days=pause_days)
+        program_pause_reactivate_on = paused_to_date + timedelta(days=1)
 
-        # ✅ Save ClientPause with both dates
+        # Save ClientPause with updated fields
         ClientPause.objects.create(
             client=client,
             subscription_id=subscription_id,
@@ -2087,10 +2139,11 @@ class PauseClientView(APIView):
             no_of_days=pause_days,
             notes=notes,
             program_end_date=program_end_date,
-            program_end_date_changed=program_end_date_changed
+            program_end_date_changed=program_end_date_changed,
+            program_pause_reactivate_on=program_pause_reactivate_on
         )
 
-        # ClientPauseLimit handling
+        # Handle pause limit
         pause_limit, created = ClientPauseLimit.objects.get_or_create(client=client, defaults={
             'subscription_months': program_months,
             'no_of_days_available': pause_policy.no_of_days,
@@ -2111,24 +2164,41 @@ class PauseClientView(APIView):
             pause_limit.no_of_pause_rem -= 1
             pause_limit.save()
 
-        # Mark client as paused
+        # Update client
         client.paused = True
+        client.program_end_date = program_end_date_changed
         client.save()
 
-        # ✅ Update MeetingsTDC: Shift meeting_date for status=False by pause_days
-        future_meetings = MeetingsTDC.objects.filter(client=client, status=False)
-        for meeting in future_meetings:
-            if meeting.meeting_date:
-                meeting.meeting_date = meeting.meeting_date + timedelta(days=pause_days)
-            meeting.dietitian_id = request.user.id
-            meeting.save()
+        # Update MeetingsTDC
+        MeetingsTDC.objects.filter(client=client, status=False).update(
+            meeting_date=models.F('meeting_date') + timedelta(days=pause_days),
+            dietitian_id=request.user.id
+        )
 
-        # ✅ Update WeeklyMeeting: Shift all meeting_date by pause_days
-        weekly_meetings = WeeklyMeeting.objects.filter(client=client)
-        for weekly in weekly_meetings:
-            if weekly.meeting_date:
-                weekly.meeting_date = weekly.meeting_date + timedelta(days=pause_days)
-                weekly.save()
+        # Remove existing weekly meetings
+        WeeklyMeeting.objects.filter(client=client, status=False).delete()
+
+        # Generate Saturdays between resume and new program end
+        def get_saturdays(start_date, end_date):
+            saturdays = []
+            current_date = start_date
+            while current_date <= end_date:
+                if current_date.weekday() == 5:  # Saturday
+                    saturdays.append(current_date)
+                current_date += timedelta(days=1)
+            return saturdays
+
+        saturdays = get_saturdays(program_pause_reactivate_on, program_end_date_changed)
+
+        # Create new weekly meetings
+        for week_no, sat_date in enumerate(saturdays, start=1):
+            WeeklyMeeting.objects.create(
+                client=client,
+                dietitian_id=request.user,
+                week_no=week_no,
+                meeting_date=sat_date,
+                status=False
+            )
 
         return Response({'message': 'Client paused successfully.'}, status=status.HTTP_200_OK)
 

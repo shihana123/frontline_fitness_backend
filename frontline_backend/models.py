@@ -427,6 +427,7 @@ class ClientPause(models.Model):
     paused_to = models.DateField(null=True, blank=True)
     no_of_days = models.IntegerField(null=True, default=1)
     notes = models.CharField(max_length=255, null=True, blank=True)
+    program_pause_reactivate_on = models.DateField(null=True, blank=True)
     program_end_date = models.DateField(null=True, blank=True)
     program_end_date_changed = models.DateField(null=True, blank=True)
 
