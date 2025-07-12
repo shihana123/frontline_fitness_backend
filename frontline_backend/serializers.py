@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -379,3 +379,20 @@ class WeeklyMeetingSerializer(serializers.ModelSerializer):
         model = WeeklyMeeting
         fields = '__all__'
 
+class DietchartClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DietchartClient
+        fields = ['diet_plan', 'uploaded', 'notes', 'diet_plan_uploaded_at']
+
+class ClientWithDietchartSerializer(serializers.ModelSerializer):
+    dietchart = DietchartClientSerializer(source='dietchartclient_set', many=True)
+    programs = ProgramClientSerializer(many=True, read_only=True)
+    class Meta:
+        model = Client
+        fields = '__all__'
+    def get_programs(self, obj):
+        user = self.context['request'].user  # logged-in user
+        # Filter only programs where trainer is the logged-in user
+        program_clients = obj.programs.filter(trainer=user)
+        return ProgramClientSerializer(program_clients, many=True).data
+    

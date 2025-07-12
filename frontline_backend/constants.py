@@ -23,4 +23,5 @@ ROLE_PREFIXES = {
     'dietitian': 'DT',
     'manager': 'MG',
     'sales': 'SL',
+    'VMC': 'VMC'
 }

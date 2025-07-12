@@ -6,8 +6,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, I
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -21,6 +21,9 @@ from django.utils.timezone import now
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models.functions import ExtractMonth
 from django.core.exceptions import ObjectDoesNotExist
+import os
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -2247,3 +2250,144 @@ class PauseClientListView(APIView):
             client_data.append(serialized)
 
         return Response(client_data)
+    
+class VMCClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        clients = Client.objects.filter(
+            Q(source__iexact='VMC') | Q(source__iexact='Vijayalalakshmi Medical Centre')
+        )
+        serializer = ClientWithDietchartSerializer(clients, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class VMCDietchartUpload(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        client_id = request.data.get('client_id')
+        notes = request.data.get('notes')
+        diet_plan_file = request.FILES.get('diet_plan')
+        user = request.user
+
+        # Validate client
+        try:
+            client = Client.objects.get(id=client_id)
+        except Client.DoesNotExist:
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        saved_path = None
+        if diet_plan_file:
+            ext = os.path.splitext(diet_plan_file.name)[1]
+            now_str = datetime.now().strftime('%Y%m%d_%H%M')
+            new_filename = f"{client.client_id}_{now_str}{ext}"
+            file_path = f'diet_chart/{new_filename}'
+            saved_path = default_storage.save(file_path, ContentFile(diet_plan_file.read()))
+
+        # Save the data
+        DietchartClient.objects.create(
+            client=client,
+            uploaded=True,
+            diet_plan=saved_path,
+            notes=notes,
+            diet_plan_uploaded_at=date.today(),
+            user=user
+        )
+
+        return Response({'message': 'Diet chart uploaded successfully'}, status=status.HTTP_200_OK)
+
+class FetchActiveClients(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, month, year):
+        try:
+            # Convert month name (e.g., "July") to number (7)
+            month_number = list(calendar.month_name).index(month.capitalize())
+            year = int(year)
+        except (ValueError, IndexError):
+            return Response({'error': 'Invalid month or year'}, status=400)
+
+        # Filter clients where program_start_date is in the given month/year
+        active_clients = Client.objects.filter(
+            Q(source__icontains="vmc") | Q(source__icontains="vijayalalakshmi medical centre"),
+            created_at__month=month_number,
+            created_at__year=year
+        )
+
+        count = active_clients.count()
+
+        return Response({
+            'active_client_count': count
+        })
+
+class FetchActiveClientsGraphView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, month, year):
+        # Convert month name (e.g., "July") to month number (e.g., 7)
+        try:
+            month_number = datetime.strptime(month, '%B').month
+        except ValueError:
+            return Response({"error": "Invalid month name"}, status=400)
+
+        try:
+            year = int(year)
+        except ValueError:
+            return Response({"error": "Invalid year"}, status=400)
+
+        # Calculate first and last day of the month
+        first_day = datetime(year, month_number, 1).date()
+        last_day = datetime(year, month_number, monthrange(year, month_number)[1]).date()
+
+        # Filter clients where source is VMC (case-insensitive) and created_at is in this month
+        clients = Client.objects.filter(
+            source__iexact='VMC',
+            created_at__date__range=(first_day, last_day)
+        )
+
+        # Prepare daily count
+        day_counts = {}
+        for day in range(1, last_day.day + 1):
+            date_obj = datetime(year, month_number, day).date()
+            count = clients.filter(created_at__date=date_obj).count()
+            day_counts[str(day)] = count
+
+        # Prepare lists for frontend
+        days = list(day_counts.keys())
+        counts = list(day_counts.values())
+
+        return Response({
+            "days": days,
+            "counts": counts
+        })
+
+class FetchActiveClientsYearlyGraphView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, year):
+        try:
+            year = int(year)
+        except ValueError:
+            return Response({"error": "Invalid year"}, status=400)
+
+        # Month names for labels
+        months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ]
+
+        # Count active clients per month
+        counts = []
+        for month in range(1, 13):
+            month_clients = Client.objects.filter(
+                created_at__year=year,
+                created_at__month=month,
+                status__iexact='Converted',
+                source__iexact='VMC'  # case-insensitive match
+            ).count()
+            counts.append(month_clients)
+
+        return Response({
+            "months": months,
+            "counts": counts
+        })

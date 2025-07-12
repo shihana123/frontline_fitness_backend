@@ -464,6 +464,18 @@ class SubscriptionPause(models.Model):
     def __str__(self):
         return 'subscription pause count added'
     
+class DietchartClient(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    uploaded = models.BooleanField(default=0)
+    diet_plan = models.FileField(upload_to='diet_chart/', null=True)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+    diet_plan_uploaded_at = models.DateField(null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, default=1)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    
 
 
 
