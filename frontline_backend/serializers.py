@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -395,4 +395,19 @@ class ClientWithDietchartSerializer(serializers.ModelSerializer):
         # Filter only programs where trainer is the logged-in user
         program_clients = obj.programs.filter(trainer=user)
         return ProgramClientSerializer(program_clients, many=True).data
+    
+class ClientPauseLimitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClientPauseLimit
+        fields = '__all__'
+
+class ClientPauseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ClientPause
+        fields = '__all__'
+
+class TrainerMeetingTDCDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrainerMeetingTDCDetails
+        fields = '__all__'
     

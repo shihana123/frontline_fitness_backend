@@ -2,7 +2,7 @@ from dj_rest_auth.views import LoginView
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
-from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetailsView, DietConsultationScheduleDetails, DietitianClientListView, WeeklyDietDetailsView, SaveWeeklyDietUpdatesView, ActiveClientDietitianView, ConsultationDietitianView, UpcomingConsultDietView, MissedConsultDietView, DietConsultationDetails, DietGraphView, BiweeklyDetailsView, BiweeklyDataUpdateView, CountBiweeklyUpdationView, DietClientMeetingsView, DietFirstConsultationDetails, DietMeetingUpdationsView, MeetingDetailsView, RemidersListView, UpdateMeetingView, DietOnlyMeetingUpdationsView, FetchMeetingDetailsView, TDCMeetingUpdateView, WeeklyMeetingView, UpdateWeeklyMeeting, WeeklyMeetingByWeekNoView, WeeklyMeetingDetailsView, MeasurementListView, MeasurementDataUpdateView, MeasurementDetailsView, MeasurementProgressView, DietChartListView, DietChartUpdateView, PauseClientDetailsView, PauseClientView, PauseClientListView, VMCClientListView, VMCDietchartUpload, FetchActiveClients, FetchActiveClientsGraphView, FetchActiveClientsYearlyGraphView
+from .views import UserCreateView, RoleListView, UserListView, UsersByRoleView, ProgramCreateView, ProgramListView, CustomUserDetailsView, NewClientListView, ScheduleConsultationView, TrainerConsultationDetails , ConsultationScheduleDetails, ClientListView, ClientDetailsView, WeeklyWorkoutDetailsView, SaveWeeklyWorkoutUpdatesView, ClientListByDateView, MarkClientAttendanceView, ClientListByMonthView, ProgramListwithTypeView, TrainerScheduleView, TrainerAvailabilityView, CountryListView, LeadCreateView, LeadsListView, LeadsView, LeadsUpdate, UsersRoleView, SalesClientListView, AssignTrainerDietitianView, followupStatusUpdateView, TrainerScheduleHourlyView, fetchFollowupsView, groupProgramListView, groupProgramView, NewLeadView, GraphLeadView, GraphRevenueView, NewClientListDietitianView, DietitianConsultationDetailsView, DietConsultationScheduleDetails, DietitianClientListView, WeeklyDietDetailsView, SaveWeeklyDietUpdatesView, ActiveClientDietitianView, ConsultationDietitianView, UpcomingConsultDietView, MissedConsultDietView, DietConsultationDetails, DietGraphView, BiweeklyDetailsView, BiweeklyDataUpdateView, CountBiweeklyUpdationView, DietClientMeetingsView, DietFirstConsultationDetails, DietMeetingUpdationsView, MeetingDetailsView, RemidersListView, UpdateMeetingView, DietOnlyMeetingUpdationsView, FetchMeetingDetailsView, TDCMeetingUpdateView, WeeklyMeetingView, UpdateWeeklyMeeting, WeeklyMeetingByWeekNoView, WeeklyMeetingDetailsView, MeasurementListView, MeasurementDataUpdateView, MeasurementDetailsView, MeasurementProgressView, DietChartListView, DietChartUpdateView, PauseClientDetailsView, PauseClientView, PauseClientListView, VMCClientListView, VMCDietchartUpload, FetchActiveClients, FetchActiveClientsGraphView, FetchActiveClientsYearlyGraphView, SalesPauseClientListView, ActivatePauseClientView, TrainerClientMeetingsView, TrainerMeetingsUpdationsView
 
 urlpatterns = [
     path('login', LoginView.as_view(), name='login'),
@@ -95,6 +95,8 @@ urlpatterns = [
     path('clientpauseDetail/<int:client_id>/', PauseClientDetailsView.as_view(), name='pause-client-details'),
     path('pauseClient', PauseClientView.as_view(), name='pause-client'),
     path('dietitianpausesclientList', PauseClientListView.as_view(), name='pause-client-list'),
+    path('salespausesclientList', SalesPauseClientListView.as_view(), name='sales-pause-client-list'),
+    path('activatePauseClient', ActivatePauseClientView.as_view(), name='activate-pause-client'),
 
     path('vmcDietchartUpload', VMCDietchartUpload.as_view(), name='vmc-diet-upload'),
     path('fetchActiveClients/<str:month>/<int:year>/', FetchActiveClients.as_view(), name='fetch-active-clients'),
@@ -102,7 +104,8 @@ urlpatterns = [
     path('fetchYearlyActiveClientsgraph/<int:year>/', FetchActiveClientsYearlyGraphView.as_view(), name='fetch-active-clients-graph-yearly'),
 
     
-
+    path('trainerclientMeetingList/<int:client_id>', TrainerClientMeetingsView.as_view(), name='trainer-client-meeting'),
+    path('trainerMeetingUpdations', TrainerMeetingsUpdationsView.as_view(), name='trainer-meeting-updations'),
     
 ]
 

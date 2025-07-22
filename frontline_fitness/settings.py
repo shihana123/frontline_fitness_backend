@@ -167,4 +167,10 @@ import os
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# Celery settings
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+
+# For periodic tasks
+INSTALLED_APPS += ['django_celery_beat']
+
 

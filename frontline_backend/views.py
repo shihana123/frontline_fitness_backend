@@ -2,12 +2,12 @@
 
 from rest_framework import generics
 from django.db import models
-from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField
+from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField, F
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -242,23 +242,46 @@ class DietitianConsultationDetailsView(APIView):
 
     def post(self, request):
         data = request.data.copy()
-        data['user'] = request.user.id  # Attach logged-in user automatically
+        data['user'] = request.user.id
 
-        serializer = DietitianConsultationDataSerializer(data=data)
+        user = request.user
+        try:
+            program_client = ProgramClient.objects.get(client=data['client'])
+        except ProgramClient.DoesNotExist:
+            return Response({'error': 'ProgramClient not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        trainer = program_client.trainer
+        dietitian = program_client.dietitian
+        program_type = program_client.program_type
+
+        is_trainer = user == trainer
+        is_dietitian = user == dietitian
+
+        # Determine role-specific serializer
+        if is_dietitian:
+            serializer = DietitianConsultationDataSerializer(data=data)
+        elif is_trainer:
+            serializer = TrainerConsultationDataSerializer(data=data)
+        else:
+            return Response({'error': 'You are not assigned as trainer or dietitian for this client.'}, status=status.HTTP_403_FORBIDDEN)
+
         if serializer.is_valid():
             serializer.save()
-            client_id = serializer.validated_data['client'].id  # Extract client from validated data
+            client_id = serializer.validated_data['client'].id
             client = Client.objects.get(id=client_id)
-            client.diet_first_consultation = 1
+
+            if is_dietitian:
+                client.diet_first_consultation = 1
+            elif is_trainer:
+                client.trainer_first_consultation = 1
+
             client.new_client = False
             client.save()
 
-            # Update ClientSubscription's program_start_date and program_end_date
             try:
                 subscription = ClientSubscription.objects.filter(client=client, subscription_type='new').latest('id')
             except ClientSubscription.DoesNotExist:
                 return Response({'error': 'No subscription found'}, status=status.HTTP_404_NOT_FOUND)
-            
 
             program_months = subscription.program_months
             start_date = date.today() + timedelta(days=1)
@@ -267,7 +290,6 @@ class DietitianConsultationDetailsView(APIView):
             subscription.program_end_date = end_date
             subscription.save()
 
-            # Fetch ProgramClient for the client
             try:
                 program_client = ProgramClient.objects.get(client=client)
             except ProgramClient.DoesNotExist:
@@ -277,8 +299,33 @@ class DietitianConsultationDetailsView(APIView):
             dietitian = program_client.dietitian
             program_type = program_client.program_type
 
-            # Determine meeting days
-            meeting_days = []
+            # If MeetingsTDC already exists, update status fields only
+            existing_meetings = MeetingsTDC.objects.filter(client=client, trainer=trainer, dietitian=dietitian)
+
+            if existing_meetings.exists():
+                if is_trainer:
+                    existing_meetings.update(trainer_status=True)
+                    MeetingsTDC.objects.filter(
+                        client=client,
+                        trainer=trainer,
+                        dietitian=dietitian,
+                        day_no=1,
+                        dietitian_status=True
+                    ).update(status=True)
+
+                elif is_dietitian:
+                    existing_meetings.update(dietitian_status=True)
+                    MeetingsTDC.objects.filter(
+                        client=client,
+                        trainer=trainer,
+                        dietitian=dietitian,
+                        day_no=1,
+                        trainer_status=True
+                    ).update(status=True)
+
+                return Response({'message': 'Meeting status updated successfully (no new meetings created).'}, status=status.HTTP_200_OK)
+
+            # Proceed to create new meetings
             if program_type == 'Personal Training':
                 base_days = [1, 3, 10]
                 next_day = 25
@@ -286,60 +333,60 @@ class DietitianConsultationDetailsView(APIView):
                     base_days.append(next_day)
                     next_day += 15
                 meeting_days = base_days
-            elif program_type == 'Group':
-                base_days = [1, 10, 24, 50]
-                next_day = 80
+            else:  # Group
+                base_days = [1, 10, 24]
+                next_day = 54
                 while next_day <= (program_months * 30):
                     base_days.append(next_day)
                     next_day += 30
                 meeting_days = base_days
 
-            # Create meeting records
             for i, day in enumerate(meeting_days):
                 meeting_date = start_date + timedelta(days=day - 1)
                 meeting_type = self.get_meeting_type(day, i, len(meeting_days))
 
-                # Measurements condition
                 measurements = False
-                measurements = False
-                if meeting_type == 'Renewal':
+                if meeting_type in ['Renewal', 'dietchart']:
                     measurements = True
-                elif meeting_type == 'dietchart':
-                    measurements = True
-                elif program_type == 'Group' and meeting_type in ['TDC']:
+                elif program_type == 'Group' and meeting_type == 'TDC':
                     measurements = True
                 elif program_type == 'Personal Training' and meeting_type == 'TDC' and (i % 2 == 0):
                     measurements = True
+
                 meeting = MeetingsTDC.objects.create(
                     client=client,
                     trainer=trainer,
                     dietitian=dietitian,
-                    meeting_type=self.get_meeting_type(day, i, len(meeting_days)),
+                    meeting_type=meeting_type,
                     day_no=day,
-                    status=(day == 1),  # Only first day is completed
+                    status=(day == 1),
+                    trainer_status=(request.user == 'trainer' and day == 1),
+                    dietitian_status=(request.user == 'dietitian' and day == 1),
                     meeting_date=meeting_date,
                     actual_meeting_date=None,
                     measurements=measurements
                 )
 
-                if measurements:
-                    Measurementsclients.objects.create(
-                        meetingtdc=meeting
+                if request.user == trainer:
+                    TrainerMeetingTDCDetails.objects.create(
+                        meetingtdc=meeting,
+                        need_data=(True if (program_type == 'Group' or (program_type == 'Personal Training' and i % 2 == 0)) else False)
                     )
+
+                if measurements:
+                    Measurementsclients.objects.create(meetingtdc=meeting)
 
             def get_saturdays(start_date, end_date):
                 saturdays = []
                 current_date = start_date
                 while current_date <= end_date:
-                    if current_date.weekday() == 5:  # Saturday
+                    if current_date.weekday() == 5:
                         saturdays.append(current_date)
                     current_date += timedelta(days=1)
                 return saturdays
 
-            # Get all Saturdays
             saturdays = get_saturdays(start_date, end_date)
 
-            # Create WeeklyMeeting records
             for week_no, sat_date in enumerate(saturdays, start=1):
                 WeeklyMeeting.objects.create(
                     client=client,
@@ -353,9 +400,10 @@ class DietitianConsultationDetailsView(APIView):
                     entered_date=None
                 )
 
-
             return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
     def get_meeting_type(self, day, index, total):
         if day == 1:
             return 'day_1'
@@ -1520,6 +1568,23 @@ class DietClientMeetingsView(APIView):
 
         serializer = MeetingsTDCSerializer(meetings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class TrainerClientMeetingsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user
+
+        meetings = MeetingsTDC.objects.filter(client_id=client_id, trainer=user, meeting_for='both').annotate(
+            pending_first=Case(
+                When(trainer_status=False, then=Value(0)),
+                When(trainer_status=True, then=Value(1)),
+                output_field=IntegerField()
+            )
+        ).order_by('pending_first', 'meeting_date')
+
+        serializer = MeetingsTDCSerializer(meetings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
 class DietFirstConsultationDetails(APIView):
     permission_classes = [IsAuthenticated]
@@ -1595,24 +1660,32 @@ class MeetingDetailsView(APIView):
         # Serialize meeting
         meeting_data = MeetingsTDCSerializer(meeting).data
 
-        # Serialize related measurements (should only be one per meeting)
+        # Serialize measurements
         try:
             measurement = Measurementsclients.objects.get(meetingtdc=meeting)
             measurement_data = MeasurementsclientsSerializer(measurement).data
         except Measurementsclients.DoesNotExist:
             measurement_data = {}
 
-        # Serialize related meeting details
+        # Serialize dietitian meeting details
         try:
             details = MeetingTDCDetails.objects.get(meetingtdc=meeting)
             details_data = MeetingTDCDetailsSerializer(details).data
         except MeetingTDCDetails.DoesNotExist:
             details_data = {}
 
+        # Serialize trainer meeting details
+        try:
+            trainer_details = TrainerMeetingTDCDetails.objects.get(meetingtdc=meeting)
+            trainer_details_data = TrainerMeetingTDCDetailsSerializer(trainer_details).data
+        except TrainerMeetingTDCDetails.DoesNotExist:
+            trainer_details_data = {}
+
         return Response({
             'meeting': meeting_data,
             'measurements': measurement_data,
-            'diet_details': details_data
+            'diet_details': details_data,
+            'trainer_details': trainer_details_data
         }, status=status.HTTP_200_OK)
 
 
@@ -1784,15 +1857,25 @@ class FetchMeetingDetailsView(APIView):
         except MeetingsTDC.DoesNotExist:
             return Response({'error': 'Meeting not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Serialize the base meeting
         meeting_data = MeetingsTDCSerializer(meeting).data
 
-        # Get all meeting details related to this meeting
+        # Serialize MeetingTDCDetails if needed (if you use it elsewhere)
         meeting_details = MeetingTDCDetails.objects.filter(meetingtdc=meeting)
         meeting_details_data = MeetingTDCDetailsSerializer(meeting_details, many=True).data
 
+        # Fetch TrainerMeetingTDCDetails for this meeting
+        try:
+            trainer_details = TrainerMeetingTDCDetails.objects.get(meetingtdc=meeting)
+            from .serializers import TrainerMeetingTDCDetailsSerializer  # Import serializer if not already
+            trainer_details_data = TrainerMeetingTDCDetailsSerializer(trainer_details).data
+        except TrainerMeetingTDCDetails.DoesNotExist:
+            trainer_details_data = None
+
         return Response({
             'meeting': meeting_data,
-            'meeting_details': meeting_details_data
+            'meeting_details': meeting_details_data,
+            'trainer_details': trainer_details_data,
         }, status=status.HTTP_200_OK)
 
 class TDCMeetingUpdateView(APIView):
@@ -2391,3 +2474,187 @@ class FetchActiveClientsYearlyGraphView(APIView):
             "months": months,
             "counts": counts
         })
+
+class SalesPauseClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.id
+        clients = Client.objects.filter(new_client=False, sales_id=user, paused=True).distinct()
+        client_data = []
+
+        for client in clients:
+            pause_info = None
+            latest_pause = None
+
+            latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
+            if latest_subscription and latest_subscription.program_type == 'Personal Training':
+                sub_months = latest_subscription.program_months
+
+                try:
+                    rule = SubscriptionPause.objects.get(subscription_months=sub_months)
+                except SubscriptionPause.DoesNotExist:
+                    rule = None
+
+                try:
+                    pause_limit = ClientPauseLimit.objects.get(client=client)
+                    pause_info = ClientPauseLimitSerializer(pause_limit).data
+                except ClientPauseLimit.DoesNotExist:
+                    if rule:
+                        pause_info = {
+                            "client": client.id,
+                            "subscription_months": sub_months,
+                            "no_of_days_available": rule.no_of_days,
+                            "no_of_pauses_available": rule.no_of_pauses,
+                            "no_of_paused_days": 0,
+                            "no_of_pauses_taken": 0,
+                            "no_of_pause_days_rem": rule.no_of_days,
+                            "no_of_pause_rem": rule.no_of_pauses,
+                            "created_at": None,
+                            "updated_at": None
+                        }
+
+            # 👇 Get last ClientPause record
+            last_pause = ClientPause.objects.filter(client=client).order_by('-id').first()
+            if last_pause:
+                latest_pause = ClientPauseSerializer(last_pause).data
+
+            serialized_client = ClientSerializer(client).data
+            serialized_client['pause_info'] = pause_info
+            serialized_client['latest_pause_record'] = latest_pause
+
+            client_data.append(serialized_client)
+
+        return Response(client_data)
+
+
+class ActivatePauseClientView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        client_id = request.data.get('client_id')
+        notes = request.data.get('notes')
+        user = request.user
+
+        try:
+            client = Client.objects.get(id=client_id)
+        except Client.DoesNotExist:
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get latest pause
+        latest_pause = ClientPause.objects.filter(client=client).order_by('-id').first()
+        if not latest_pause:
+            return Response({'error': 'No previous pause found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Calculate pause days from paused_from to today
+        paused_from = latest_pause.paused_from
+        today = date.today()
+        no_of_days_paused = (today - paused_from).days if paused_from else 0
+
+        # Update program end date
+        program_end_date = latest_pause.program_end_date
+        program_end_date_changed = program_end_date - timedelta(days=no_of_days_paused)
+
+        # Reactivation row
+        ClientPause.objects.create(
+            client=client,
+            user=user,
+            subscription_id=latest_pause.subscription_id,
+            type='Activated',
+            paused_at=datetime.now(),
+            paused_from=None,
+            paused_to=None,
+            no_of_days=no_of_days_paused,
+            notes=notes,
+            program_end_date=program_end_date,
+            program_end_date_changed=program_end_date_changed,
+            program_pause_reactivate_on=today + timedelta(days=1)
+        )
+
+        # Update pause limit
+        try:
+            pause_limit = ClientPauseLimit.objects.get(client=client)
+            pause_limit.no_of_paused_days += no_of_days_paused
+            pause_limit.no_of_pause_days_rem -= no_of_days_paused
+            pause_limit.save()
+        except ClientPauseLimit.DoesNotExist:
+            pass  # Optional: Log or handle no pause record
+
+        # Update MeetingsTDC
+        MeetingsTDC.objects.filter(client=client, status=False).update(
+            meeting_date=F('meeting_date') - timedelta(days=no_of_days_paused),
+            dietitian_id=user.id
+        )
+
+        # Remove existing weekly meetings
+        WeeklyMeeting.objects.filter(client=client, status=False).delete()
+
+        # Generate new weekly meetings
+        start_date = today + timedelta(days=1)
+        end_date = program_end_date_changed
+
+        def get_saturdays(start_date, end_date):
+            saturdays = []
+            current_date = start_date
+            while current_date <= end_date:
+                if current_date.weekday() == 5:
+                    saturdays.append(current_date)
+                current_date += timedelta(days=1)
+            return saturdays
+
+        saturdays = get_saturdays(start_date, end_date)
+
+        for week_no, sat_date in enumerate(saturdays, start=1):
+            WeeklyMeeting.objects.create(
+                client=client,
+                dietitian_id=user,
+                week_no=week_no,
+                meeting_date=sat_date,
+                status=False
+            )
+
+        # Mark client as not paused
+        client.paused = False
+        client.save()
+
+        return Response({'message': 'Client activated successfully.'}, status=status.HTTP_200_OK)
+
+class TrainerMeetingsUpdationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        meeting_id = request.data.get('meeting_id')
+        if not meeting_id:
+            return Response({'error': 'Meeting ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            meeting = MeetingsTDC.objects.get(id=meeting_id)
+        except MeetingsTDC.DoesNotExist:
+            return Response({'error': 'MeetingTDC not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Get or create TrainerMeetingTDCDetails
+        trainer_details, _ = TrainerMeetingTDCDetails.objects.get_or_create(meetingtdc=meeting)
+
+        # Update the trainer details
+        for field in [
+            'half_sit_up', 'modified_push_ups', 'plank_hold', 'wall_sqaut_hold',
+            'shoulder_flexibility', 'sit_and_reach', 'hamstring_flexibility', 'quadriceps_flexibility',
+            'rounded_shoulder', 'kyphosis', 'lordosis', 'scoliosis', 'bow_leg', 'knock_knees',
+            'winging_of_scapula', 'flat_foot', 'notes'
+        ]:
+            if field in request.data:
+                setattr(trainer_details, field, request.data.get(field))
+
+        trainer_details.status = True
+        trainer_details.save()
+
+        # Update the MeetingsTDC table
+        meeting.trainer_status = True
+        meeting.trainer_actual_meeting_date = now().date()
+
+        if meeting.trainer_status and meeting.dietitian_status:
+            meeting.status = True
+
+        meeting.save()
+
+        return Response({'message': 'Trainer meeting details updated successfully.'}, status=status.HTTP_200_OK)

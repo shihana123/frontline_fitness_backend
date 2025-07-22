@@ -355,17 +355,49 @@ class MeetingsTDC(models.Model):
     dietitian = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='meetings_as_dietitian')
     meeting_type = models.CharField(max_length=120, default='day_1')#day_1, dietchart, dietition_only, TDC, Renewal
     day_no = models.IntegerField(default=1)
+    dietitian_status = models.BooleanField(default=False)
+    trainer_status = models.BooleanField(default=False)
     status = models.BooleanField(default=False)
     meeting_date = models.DateField(null=True, blank=True)
+    trainer_actual_meeting_date = models.DateField(null=True, blank=True)
     actual_meeting_date = models.DateField(null=True, blank=True)
     need_meeting = models.IntegerField(default=1)
     measurements = models.BooleanField(default=0)
+    meeting_for = models.CharField(max_length=120, default='both')#both, dietitian, trainer
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
         return self.client
+    
+class TrainerMeetingTDCDetails(models.Model):
+    meetingtdc = models.ForeignKey(MeetingsTDC, on_delete=models.CASCADE)
+    half_sit_up = models.CharField(max_length=255, default=True, null=True)
+    modified_push_ups = models.CharField(max_length=255, default=True, null=True)
+    plank_hold = models.CharField(max_length=255, default=True, null=True)
+    wall_sqaut_hold = models.CharField(max_length=255, default=True, null=True)
+    shoulder_flexibility = models.CharField(max_length=255, default=True, null=True)
+    sit_and_reach = models.CharField(max_length=255, default=True, null=True)
+    hamstring_flexibility = models.CharField(max_length=255, default=True, null=True)
+    quadriceps_flexibility = models.CharField(max_length=255, default=True, null=True)
+    rounded_shoulder = models.CharField(max_length=255, default=True, null=True)
+    kyphosis = models.CharField(max_length=255, default=True, null=True)
+    lordosis = models.CharField(max_length=255, default=True, null=True)
+    scoliosis = models.CharField(max_length=255, default=True, null=True)
+    bow_leg = models.CharField(max_length=255, default=True, null=True)
+    knock_knees = models.CharField(max_length=255, default=True, null=True)
+    winging_of_scapula = models.CharField(max_length=255, default=True, null=True)
+    flat_foot = models.CharField(max_length=255, default=True, null=True)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+    status = models.BooleanField(default=False)
+    need_data = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    def __str__(self):
+        return self.meetingtdc
+
 
 class MeetingTDCDetails(models.Model):
     meetingtdc = models.ForeignKey(MeetingsTDC, on_delete=models.CASCADE)
@@ -420,6 +452,7 @@ class WeeklyMeeting(models.Model):
     
 class ClientPause(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, default=1)
     subscription_id = models.CharField(max_length=120, null=True)
     type = models.CharField(max_length=120, null=True, default='Paused') #Paused, Activated
     paused_at = models.DateTimeField(null=True, blank=True)
