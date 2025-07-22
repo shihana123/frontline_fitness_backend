@@ -6,8 +6,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, I
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer, ReschedulesSessionsSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -619,39 +619,66 @@ class ClientListByDateView(APIView):
     permission_classes = [IsAuthenticated]  # ensure only logged-in users can access
 
     def get(self, request, attendance_date):
-        date_str = attendance_date  # expected format: 'YYYY-MM-DD'
-        if not date_str:
+        if not attendance_date:
             return Response({'error': 'Date is required'}, status=400)
 
         try:
-            selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            weekday = selected_date.strftime('%A').lower()  # e.g. 'tuesday'
+            selected_date = datetime.strptime(attendance_date, '%Y-%m-%d').date()
+            weekday = selected_date.strftime('%A').lower()
 
+            # Subquery: Check for active subscription during selected date
+            latest_subs = ClientSubscription.objects.filter(
+                client=OuterRef('client'),
+                program_start_date__lte=selected_date,
+                program_end_date__gte=selected_date
+            ).order_by('-id')
+
+            # Subquery: Check if attendance exists
             attendance_subquery = ClienAttendanceUpdates.objects.filter(
                 client=OuterRef('client'),
                 workout_date=selected_date,
                 trainer_id=request.user
             )
 
-            # Filter ProgramClient for:
-            # - Active programs
-            # - Client's workout started
-            # - Workout includes this weekday
-            # - Trainer is the current user
-            program_clients = ProgramClient.objects.filter(
-                status='active',
-                client__workout_start_date__lte=selected_date,
-                workout_days__icontains=weekday,
+            # Subquery: Check if session is rescheduled
+            reschedule_subquery = ReschedulesSessions.objects.filter(
+                client=OuterRef('client'),
+                session_date=selected_date,
                 trainer=request.user
-            ).annotate(
-                has_attendance=Exists(attendance_subquery)
+            )
+
+            # Get program clients filtered with all conditions
+            program_clients = ProgramClient.objects.annotate(
+                has_valid_subscription=Exists(latest_subs),
+                has_attendance=Exists(attendance_subquery),
+                has_reschedule=Exists(reschedule_subquery)
+            ).filter(
+                status='active',
+                trainer=request.user,
+                workout_days__icontains=weekday,
+                has_valid_subscription=True
             ).select_related('client', 'program', 'trainer', 'dietitian')
 
             serializer = ProgramClientDaysSerializer(program_clients, many=True)
-            return Response(serializer.data)
+
+            # Optional: Fetch full reschedule details per client
+            reschedules = ReschedulesSessions.objects.filter(
+                session_date=selected_date,
+                trainer=request.user,
+                client__in=[pc.client.id for pc in program_clients]
+            )
+
+            from .serializers import ReschedulesSessionsSerializer  # create if needed
+            reschedule_data = ReschedulesSessionsSerializer(reschedules, many=True).data
+
+            return Response({
+                'clients': serializer.data,
+                'reschedules': reschedule_data
+            })
 
         except ValueError:
-            return Response({'error': 'Invalid date format'}, status=400)
+            return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+
         
 class MarkClientAttendanceView(APIView):
     permission_classes = [IsAuthenticated]
@@ -2658,3 +2685,38 @@ class TrainerMeetingsUpdationsView(APIView):
         meeting.save()
 
         return Response({'message': 'Trainer meeting details updated successfully.'}, status=status.HTTP_200_OK)
+    
+class RescheduleSessionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            client_id = request.data.get('client_id')
+            session_date = request.data.get('session_date')
+            cancelled_by = request.data.get('cancelled_by')
+            reschedule = request.data.get('reschedule')
+            reschedule_to = request.data.get('reschedule_to')
+            notes = request.data.get('notes')
+
+            if not client_id or not session_date:
+                return Response({'error': 'Client ID and Session Date are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            client = Client.objects.get(id=client_id)
+
+            reschedule_session = ReschedulesSessions.objects.create(
+                client=client,
+                trainer=request.user,
+                session_date=session_date,
+                cancelled_by=cancelled_by,
+                reschedule=reschedule,
+                reschedule_to=reschedule_to if reschedule else None,
+                notes=notes
+            )
+
+            return Response({'message': 'Session rescheduled successfully'}, status=status.HTTP_201_CREATED)
+
+        except Client.DoesNotExist:
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

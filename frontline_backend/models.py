@@ -508,6 +508,21 @@ class DietchartClient(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
 
+class ReschedulesSessions(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    trainer = models.ForeignKey(User, on_delete=models.CASCADE, default=1)
+    session_date = models.DateField(null=True, blank=True)
+    cancelled_by = models.CharField(max_length=55, null=True, blank=True)
+    reschedule = models.BooleanField(default=True)
+    reschedule_to = models.DateField(null=True, blank=True)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+
+
+
     
 
 

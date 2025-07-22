@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails, ReschedulesSessions
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -202,10 +202,12 @@ class ProgramClientDaysSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.name')
     program_name = serializers.CharField(source='program.name')
     has_attendance = serializers.BooleanField(read_only=True)
+    client_id = serializers.IntegerField(source='client.id')
+    has_reschedule = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = ProgramClient
-        fields = ['id', 'client_name', 'program_name', 'workout_days', 'preferred_time', 'status', 'program_type', 'has_attendance']
+        fields = ['id', 'client_name', 'program_name', 'workout_days', 'preferred_time', 'status', 'program_type', 'has_attendance', 'client_id', 'has_reschedule']
                         
 class LeadCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -411,3 +413,12 @@ class TrainerMeetingTDCDetailsSerializer(serializers.ModelSerializer):
         model = TrainerMeetingTDCDetails
         fields = '__all__'
     
+class ReschedulesSessionsSerializer(serializers.ModelSerializer):
+    client_name = serializers.CharField(source='client.name', read_only=True)
+
+    class Meta:
+        model = ReschedulesSessions
+        fields = [
+            'id', 'client', 'client_name', 'session_date',
+            'cancelled_by', 'reschedule', 'reschedule_to', 'notes'
+        ]
