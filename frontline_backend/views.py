@@ -6,8 +6,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, I
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer, ReschedulesSessionsSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer, ReschedulesSessionsSerializer, MainProgramsSerializer, MainProgramCreateSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -62,6 +62,14 @@ class UsersByRoleView(APIView):
 class ProgramCreateView(APIView):
     def post(self, request):
         serializer = ProgramCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"message": "Program created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class MainProgramCreateView(APIView):
+    def post(self, request):
+        serializer = MainProgramCreateSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response({"message": "Program created successfully", "data": serializer.data}, status=status.HTTP_201_CREATED)
@@ -2727,3 +2735,41 @@ class RescheduleSessionView(APIView):
 
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class MainProgramListView(APIView):
+    def get(self, request):
+        # users = User.objects.filter(status=True)
+        programs = MainProgram.objects.filter(is_deleted=0)
+        serializer = MainProgramsSerializer(programs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class DeleteMainProgramView(APIView):
+    def post(self, request, pk):
+        try:
+            program = MainProgram.objects.get(id=pk)
+            program.is_deleted = True
+            program.save()
+            return Response({'message': 'Program deleted'}, status=status.HTTP_200_OK)
+        except MainProgram.DoesNotExist:
+            return Response({'error': 'Program not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class DetailsMainProgramView(APIView):
+     def get(self, request, pk):
+        programs = MainProgram.objects.filter(id=pk)
+        serializer = MainProgramsSerializer(programs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class UpdateMainProgramView(APIView):
+    def post(self, request, pk):
+        try:
+            program = MainProgram.objects.get(id=pk)
+        except MainProgram.DoesNotExist:
+            return Response({'error': 'Program not found'}, status=404)
+
+        program.name = request.data.get('name', program.name)
+        program.status = request.data.get('status', program.status)
+        program.save()
+
+        serializer = MainProgramsSerializer(program)
+        return Response(serializer.data, status=200)

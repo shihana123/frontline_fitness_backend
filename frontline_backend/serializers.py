@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails, ReschedulesSessions
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -90,6 +90,11 @@ class ProgramCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid group_trainer_level2 user.")
         return value
     
+class MainProgramCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MainProgram
+        fields = '__all__'
+
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
         model = Country
@@ -99,6 +104,11 @@ class ProgramsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
         fields = ['id', 'name', 'program_type', ]
+
+class MainProgramsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MainProgram
+        fields = '__all__'
 
 class ProgramClientSerializer(serializers.ModelSerializer):
     program = ProgramsSerializer()

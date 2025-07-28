@@ -66,6 +66,18 @@ class UserRole(models.Model):
     def __str__(self):
         return f"{self.user.name} - {self.role.rolename}"
 
+class MainProgram(models.Model):
+    name = models.CharField(max_length=255)
+    status = models.BooleanField(default=1)
+    is_deleted = models.BooleanField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+    
+
+    def __str__(self):
+        return self.name
+
 
 class Program(models.Model):
     name = models.CharField(max_length=255)
