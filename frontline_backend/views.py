@@ -41,7 +41,14 @@ class RoleListView(APIView):
 class UserListView(APIView):
     def get(self, request):
         # users = User.objects.filter(status=True)
-        users = User.objects.all()
+        # users = User.objects.all()
+        # user_roles = UserRole.objects.filter(role__id=1).select_related('user', 'role')
+        # users = [user_role.user for user_role in user_roles]
+
+        users = User.objects.exclude(
+            Q(id__in=UserRole.objects.filter(role__rolename__iexact='admin').values_list('user_id', flat=True)) |
+            Q(is_superuser=True)
+        )
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
