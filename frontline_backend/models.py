@@ -80,30 +80,26 @@ class MainProgram(models.Model):
 
 
 class Program(models.Model):
+    mainprogram = models.ForeignKey(MainProgram, on_delete=models.CASCADE, related_name='mainprograms', default=1)
     name = models.CharField(max_length=255)
-    program_type = models.JSONField(null=True, blank=True)
-    personal_select_days = models.JSONField(null=True, blank=True)
-
-    group_select_days_level1 = models.JSONField(null=True, blank=True)
-    group_select_time_level1 = models.JSONField(null=True, blank=True)
-    group_capacity_level1 = models.PositiveIntegerField(null=True, blank=True)
-    group_trainer_level1 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_1_programs')
-    
-    group_select_days_level2 = models.JSONField(null=True, blank=True)
-    group_select_time_level2 = models.JSONField(null=True, blank=True)
-    group_capacity_level2 = models.PositiveIntegerField(null=True, blank=True)
-    group_trainer_level2 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_2_programs')
-
-    group_select_days_level3 = models.JSONField(null=True, blank=True)
-    group_select_time_level3 = models.JSONField(null=True, blank=True)
-    group_capacity_level3 = models.PositiveIntegerField(null=True, blank=True)
-    group_trainer_level3 = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='group_trainer_3_programs')
-    
+    program_type = models.CharField(max_length=255, null=True, blank=True)
+    program_select_days = models.JSONField(null=True, blank=True)
+    program_select_time = models.JSONField(null=True, blank=True)
+    program_capacity = models.PositiveIntegerField(null=True, blank=True)
+    program_trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
 
     def __str__(self):
         return self.name
 
+class Country(models.Model):
+    country_code = models.CharField(max_length=100, null=False)
+    country_name = models.CharField(max_length=100, null=False)
+    def __str__(self):
+        return self.country_name or self.country_code
 
 class Client(models.Model):
     client_id = models.CharField(max_length=10, unique=True, null=True, blank=True)
@@ -123,6 +119,7 @@ class Client(models.Model):
     program_end_date = models.DateField(null=True, blank=True)
     amount = models.CharField(max_length=20,null=True, blank=True)
     paused = models.BooleanField(default=False)
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, default=100)
 
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -224,18 +221,13 @@ class ClienAttendanceUpdates(models.Model):
 
     def __str__(self):
         return f"Attendance of   {self.client.name}  marked on {self.created_at}"
-    
-class Country(models.Model):
-    country_code = models.CharField(max_length=100, null=False)
-    country_name = models.CharField(max_length=100, null=False)
-    def __str__(self):
-        return self.country_name or self.country_code
 
 
 class Leads(models.Model):
     name = models.CharField(max_length=100, null=False)
     source = models.CharField(max_length=100, null=False)
-    sales_id = models.ForeignKey(User, on_delete=models.CASCADE)
+    trainer = models.ForeignKey(User, on_delete=models.CASCADE, null=True, related_name="lead_trainer")
+    sales_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name="lead_sales")
     phone = models.CharField(max_length=15, null=False)
     email = models.EmailField(unique=True, null=False)
     status = models.CharField(max_length=255, default='New Lead', null=True)
@@ -246,7 +238,7 @@ class Leads(models.Model):
     preferred_time = models.JSONField(null=True, blank=True)
     lead_date = models.DateField(null=True)
     follow_up_date = models.DateField(null=True)
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, null=True)
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, null=True, related_name="leads")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
 

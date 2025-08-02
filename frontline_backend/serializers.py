@@ -78,17 +78,6 @@ class ProgramCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
         fields = '__all__'
-
-    # Optional: Validate that the trainers are users with proper roles if needed
-    def validate_group_trainer_level1(self, value):
-        if value and not User.objects.filter(id=value.id).exists():
-            raise serializers.ValidationError("Invalid group_trainer_level1 user.")
-        return value
-
-    def validate_group_trainer_level2(self, value):
-        if value and not User.objects.filter(id=value.id).exists():
-            raise serializers.ValidationError("Invalid group_trainer_level2 user.")
-        return value
     
 class MainProgramCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -100,10 +89,20 @@ class CountrySerializer(serializers.ModelSerializer):
         model = Country
         fields = '__all__'
 
+class MainProgramSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MainProgram
+        fields = '__all__'
+
 class ProgramsSerializer(serializers.ModelSerializer):
+    mainprogram = MainProgramSerializer()
     class Meta:
         model = Program
-        fields = ['id', 'name', 'program_type', ]
+        fields = [
+            'id', 'name', 'status', 'program_type',
+            'program_capacity', 'program_trainer',
+            'mainprogram'  # nested main program
+        ]
 
 class MainProgramsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -146,8 +145,14 @@ class DietitianConsultationDataSerializer(serializers.ModelSerializer):
         model = DietitianConsultationDetails
         fields = '__all__'
 
+class LeadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Leads
+        fields = '__all__'
+        
 class ClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)
+    leads = LeadSerializer(many=True, read_only=True)
     class Meta:
         model = Client
         fields = '__all__'
@@ -274,36 +279,20 @@ class GroupProgramLevelSerializer(serializers.Serializer):
     enrolled_clients = serializers.IntegerField()
 
 class GroupProgramSerializer(serializers.ModelSerializer):
-    levels = serializers.SerializerMethodField()
+    enrolled_clients = serializers.SerializerMethodField()
+    trainer_name = serializers.CharField(source='program_trainer.name', read_only=True)
 
     class Meta:
         model = Program
-        fields = ['id', 'name', 'levels']
+        fields = ['id', 'name', 'program_type', 'program_select_days', 'program_select_time',
+                  'program_capacity', 'program_trainer', 'trainer_name', 'enrolled_clients']
 
-    def get_levels(self, program):
-        levels = []
-        for i in range(1, 4):
-            days = getattr(program, f'group_select_days_level{i}')
-            time = getattr(program, f'group_select_time_level{i}')
-            capacity = getattr(program, f'group_capacity_level{i}')
-            if not capacity:
-                continue  # Skip empty levels
-
-            trainer = getattr(program, f'group_trainer_level{i}')
-            enrolled_clients = ProgramClient.objects.filter(
-                program=program,
-                program_type__icontains='Group',
-                trainer=trainer
-            ).count()
-
-            levels.append({
-                'level': i,
-                'days': days,
-                'time': time,
-                'capacity': capacity,
-                'enrolled_clients': enrolled_clients
-            })
-        return levels
+    def get_enrolled_clients(self, program):
+        return ProgramClient.objects.filter(
+            program=program,
+            program_type__icontains='Group',
+            trainer=program.program_trainer
+        ).count()
     
 class WeeklyDietUpdateSerializer(serializers.ModelSerializer):
     class Meta:

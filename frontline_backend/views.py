@@ -1,7 +1,7 @@
 # users/views.py
 
 from rest_framework import generics
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField, F
 from rest_framework.views import APIView
 from rest_framework import status
@@ -24,6 +24,7 @@ from django.core.exceptions import ObjectDoesNotExist
 import os
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+import json
 
 class CustomUserDetailsView(UserDetailsView):
     serializer_class = CustomUserDetailsSerializer
@@ -61,6 +62,33 @@ class UsersByRoleView(APIView):
 
 class ProgramCreateView(APIView):
     def post(self, request):
+        data = request.data
+
+        # Extract fields
+        mainprogram = data.get('mainprogram')
+        program_type = data.get('program_type')
+        program_select_days = json.loads(data.get('program_select_days', '[]'))
+        program_trainer = data.get('program_trainer')
+        program_select_time = json.loads(data.get('program_select_time', '[]'))
+
+        if program_type.lower() == 'group':
+            existing_programs = Program.objects.filter(
+                mainprogram=mainprogram,
+                program_type=program_type,
+                program_trainer=program_trainer,
+            )
+
+            # Compare days and time arrays exactly
+            for program in existing_programs:
+                if (
+                    program.program_select_days == program_select_days and
+                    program.program_select_time == program_select_time
+                ):
+                    return Response({
+                        'error': 'Duplicate program already exists with same days and time slots.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+        
         serializer = ProgramCreateSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -77,10 +105,14 @@ class MainProgramCreateView(APIView):
     
 class ProgramListView(APIView):
     def get(self, request):
-        # users = User.objects.filter(status=True)
-        programs = Program.objects.all()
+        programs = Program.objects.filter(status='active').select_related('mainprogram')
         serializer = ProgramsSerializer(programs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    # def get(self, request):
+    #     # users = User.objects.filter(status=True)
+    #     programs = Program.objects.all()
+    #     serializer = ProgramsSerializer(programs, many=True)
+    #     return Response(serializer.data, status=status.HTTP_200_OK)
     
 class NewClientListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -521,7 +553,7 @@ class SalesClientListView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
         user = request.user.id
-        clients = Client.objects.filter(sales = user).distinct()
+        clients = Client.objects.filter(sales = user).order_by('-created_at').distinct()
         serializer =ClientSerializer(clients, many=True)
         return Response(serializer.data)
     
@@ -776,7 +808,7 @@ class ClientListByMonthView(APIView):
 class ProgramListwithTypeView(APIView):
     def get(self, request, program_type):
         if program_type:
-            programs = Program.objects.filter(program_type__contains=[program_type])
+            programs = Program.objects.filter(program_type=program_type)
         else:
             programs = Program.objects.all()
 
@@ -851,6 +883,8 @@ class TrainerScheduleHourlyView(APIView):
             program_clients = ProgramClient.objects.filter(trainer=trainer)
 
             for pc in program_clients:
+                if not pc.program:
+                    continue
                 # Get workout days
                 workout_days = [day.capitalize() for day in (pc.workout_days or [])]
 
@@ -1180,7 +1214,7 @@ class fetchFollowupsView(APIView):
 class groupProgramListView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
-        programs = Program.objects.filter(program_type__icontains='Group')
+        programs = Program.objects.filter(program_type='Group')
         serializer = GroupProgramSerializer(programs, many=True)
         return Response(serializer.data)
     
@@ -2773,3 +2807,82 @@ class UpdateMainProgramView(APIView):
 
         serializer = MainProgramsSerializer(program)
         return Response(serializer.data, status=200)
+
+class ProgramCountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        mainprogram_id = request.GET.get('mainprogram_id')
+        program_type = request.GET.get('program_type')
+
+        if not mainprogram_id or not program_type:
+            return Response({'error': 'Missing parameters'}, status=400)
+
+        count = Program.objects.filter(
+            mainprogram_id=mainprogram_id,
+            program_type=program_type  # exact match now
+        ).count()
+
+        return Response({'count': count})
+
+class ClientCreateView(APIView):
+    def post(self, request):
+        data = request.data
+
+        # 1. Check for duplicate email
+        if Client.objects.filter(email=data.get('email')).exists():
+            return Response({'error': 'Email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                last_client = Client.objects.order_by('-id').first()
+                if last_client and last_client.client_id:
+                    # extract numeric part using regex (e.g., from "FCL004" or "FFCL004")
+                    match = re.search(r'\d+', last_client.client_id)
+                    if match:
+                        last_number = int(match.group())
+                        new_client_id = f"FFCL{last_number + 1:03d}"
+                    else:
+                        # fallback if no number found
+                        new_client_id = "FFCL001"
+                else:
+                    new_client_id = "FFCL001"
+                # 2. Create the Client
+                client = Client.objects.create(
+                    client_id = new_client_id,
+                    name = data.get('name'),
+                    source = data.get('source'),
+                    email = data.get('email'),
+                    phone=data.get('phone'),
+                    country_id=data.get('country'),
+                    sales=request.user,
+                    program_months=data.get('program_month'),
+                    amount=data.get('amount'),
+                    program_start_date=data.get('program_start_date'),
+                    program_end_date=data.get('program_end_date'),
+                    status = data.get('status'),
+                )
+
+                # 3. Create ProgramClient entry
+                program = Program.objects.get(id=data.get('program_name'))  # or raise 404
+
+                ProgramClient.objects.create(
+                    client=client,
+                    program=program,
+                    program_type=data.get('program_type'),
+                    preferred_time=data.get('preferred_time'),
+                    workout_days=data.get('preferred_days'),
+                    status="active",
+                    trainer_id=data.get('trainer_id'),
+                    dietitian_id=data.get('dietitian_id')
+                )
+
+                # 4. Optionally mark lead as converted (if lead exists)
+                # Leads.objects.filter(email=data.get('email')).update(client=client, status='Converted')
+
+                return Response({'success': 'Client and program created successfully'}, status=status.HTTP_201_CREATED)
+
+        except Program.DoesNotExist:
+            return Response({'error': 'Selected program does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
