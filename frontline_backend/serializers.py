@@ -111,6 +111,8 @@ class MainProgramsSerializer(serializers.ModelSerializer):
 
 class ProgramClientSerializer(serializers.ModelSerializer):
     program = ProgramsSerializer()
+    trainer = UserSerializer(read_only=True)
+    dietitian = UserSerializer(read_only=True)
 
     class Meta:
         model = ProgramClient
@@ -153,6 +155,7 @@ class LeadSerializer(serializers.ModelSerializer):
 class ClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)
     leads = LeadSerializer(many=True, read_only=True)
+    country_name = serializers.CharField(source='country.country_name', read_only=True)
     class Meta:
         model = Client
         fields = '__all__'
@@ -245,6 +248,7 @@ class LeadsSerializer(serializers.ModelSerializer):
     country_name = serializers.CharField(source='country.country_name', read_only=True)
     followups = serializers.SerializerMethodField()
     program_details = serializers.SerializerMethodField()
+    sales_id = UserSerializer(read_only=True)
 
     class Meta:
         model = Leads

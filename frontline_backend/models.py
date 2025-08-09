@@ -108,6 +108,7 @@ class Client(models.Model):
     sales = models.ForeignKey('User', on_delete=models.CASCADE, null=True)
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20)
+    age = models.SmallIntegerField(null=True)
     status = models.CharField(max_length=20, choices=CLIENT_STATUS_CHOICES)
     new_client = models.BooleanField(default=True)
     workout_start_date = models.DateField(null=True, blank=True)
@@ -230,6 +231,7 @@ class Leads(models.Model):
     sales_id = models.ForeignKey(User, on_delete=models.CASCADE, related_name="lead_sales")
     phone = models.CharField(max_length=15, null=False)
     email = models.EmailField(unique=True, null=False)
+    age = models.SmallIntegerField(null=True)
     status = models.CharField(max_length=255, default='New Lead', null=True)
     country = models.ForeignKey(Country, on_delete=models.CASCADE, default=100)
     program_type = models.CharField(max_length=50, null=True, blank=True)
@@ -239,6 +241,7 @@ class Leads(models.Model):
     lead_date = models.DateField(null=True)
     follow_up_date = models.DateField(null=True)
     client = models.ForeignKey(Client, on_delete=models.CASCADE, null=True, related_name="leads")
+    notes = models.CharField(max_length=255, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
 

@@ -880,11 +880,14 @@ class TrainerScheduleHourlyView(APIView):
 
         for trainer in trainers:
             program_blocks = []
+
+            # 1️⃣ First, get ProgramClient blocks
             program_clients = ProgramClient.objects.filter(trainer=trainer)
 
             for pc in program_clients:
                 if not pc.program:
                     continue
+
                 # Get workout days
                 workout_days = [day.capitalize() for day in (pc.workout_days or [])]
 
@@ -906,6 +909,33 @@ class TrainerScheduleHourlyView(APIView):
                             'program_days': workout_days
                         })
 
+            # 2️⃣ Now, add blocks from Program table for group programs
+            group_programs = Program.objects.filter(
+                program_trainer=trainer,
+                program_type__iexact="Group"
+            )
+
+            for gp in group_programs:
+                workout_days = [day.capitalize() for day in (gp.program_select_days or [])]
+
+                for time_range in gp.program_select_time or []:
+                    start = parse_time(time_range[0])
+                    end = parse_time(time_range[1])
+
+                    if start and end:
+                        start_hour = start.hour
+                        end_hour = end.hour
+                        if end.minute > 0:
+                            end_hour += 1
+
+                        program_blocks.append({
+                            'start_hour': start_hour,
+                            'end_hour': end_hour,
+                            'program_name': gp.name,
+                            'program_days': workout_days
+                        })
+
+            # 3️⃣ Append combined results for this trainer
             result.append({
                 'trainer_id': trainer.id,
                 'trainer_name': trainer.name,
@@ -939,6 +969,7 @@ class LeadCreateView(APIView):
                 lead_id=lead.id,
                 sales_id=request.user.id,
                 follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
+                notes=lead.notes,
                 status=False  # default follow-up status
             )
 
@@ -2886,3 +2917,22 @@ class ClientCreateView(APIView):
             return Response({'error': 'Selected program does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+class AllClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        user = request.user.id
+        clients = Client.objects.order_by('-created_at').distinct()
+        serializer =ClientSerializer(clients, many=True)
+        return Response(serializer.data)
+
+class AllLeadsListView(APIView):
+    
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        # users = User.objects.filter(status=True)
+        user = request.user.id
+        leads = Leads.objects.order_by('-created_at')  # DESC order = LIFO
+        serializer = LeadsSerializer(leads, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
