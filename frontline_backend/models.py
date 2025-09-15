@@ -121,6 +121,9 @@ class Client(models.Model):
     amount = models.CharField(max_length=20,null=True, blank=True)
     paused = models.BooleanField(default=False)
     country = models.ForeignKey(Country, on_delete=models.CASCADE, default=100)
+    first_consulation_date_trainer = models.DateField(null=True, blank=True)
+    first_consulation_date_dietitian = models.DateField(null=True, blank=True)
+
 
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -177,6 +180,23 @@ class TrainerConsultationDetails(models.Model):
     current_workouts = models.CharField(max_length=100, blank=True, null=True)
     physical_limitations = models.CharField(max_length=100, blank=True, null=True)
     equipment_owned = models.CharField(max_length=100, blank=True, null=True)
+    half_sit_up = models.CharField(max_length=255, default=True, null=True)
+    modified_push_ups = models.CharField(max_length=255, default=True, null=True)
+    plank_hold = models.CharField(max_length=255, default=True, null=True)
+    wall_sqaut_hold = models.CharField(max_length=255, default=True, null=True)
+    shoulder_flexibility = models.CharField(max_length=255, default=True, null=True)
+    sit_and_reach = models.CharField(max_length=255, default=True, null=True)
+    hamstring_flexibility = models.CharField(max_length=255, default=True, null=True)
+    quadriceps_flexibility = models.CharField(max_length=255, default=True, null=True)
+    rounded_shoulder = models.CharField(max_length=255, default=True, null=True)
+    kyphosis = models.CharField(max_length=255, default=True, null=True)
+    lordosis = models.CharField(max_length=255, default=True, null=True)
+    scoliosis = models.CharField(max_length=255, default=True, null=True)
+    bow_leg = models.CharField(max_length=255, default=True, null=True)
+    knock_knees = models.CharField(max_length=255, default=True, null=True)
+    winging_of_scapula = models.CharField(max_length=255, default=True, null=True)
+    flat_foot = models.CharField(max_length=255, default=True, null=True)
+    notes = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -360,6 +380,7 @@ class MeetingsTDC(models.Model):
     client = models.ForeignKey(Client, on_delete=models.CASCADE)
     trainer = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='meetings_as_trainer')
     dietitian = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='meetings_as_dietitian')
+    # sales = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='meetings_as_sales')
     meeting_type = models.CharField(max_length=120, default='day_1')#day_1, dietchart, dietition_only, TDC, Renewal
     day_no = models.IntegerField(default=1)
     dietitian_status = models.BooleanField(default=False)
@@ -526,6 +547,46 @@ class ReschedulesSessions(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+class DailyTasks(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    User = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='task_as_sales')
+    MeetingsTDC = models.ForeignKey(MeetingsTDC, on_delete=models.CASCADE, null=True, blank=True)
+    ClientPause = models.ForeignKey(ClientPause, on_delete=models.CASCADE, null=True, blank=True)
+    LeadsFollowup = models.ForeignKey(LeadsFollowup, on_delete=models.CASCADE, null=True, blank=True)
+    WeeklyMeeting = models.ForeignKey(WeeklyMeeting, on_delete=models.CASCADE, null=True, blank=True)
+    task_type = models.CharField(max_length=50, default='Renewal')
+    date = models.DateField(null=True, blank=True)
+    status = models.BooleanField(default=False)
+    connected = models.BooleanField(default=False)
+    actual_completion_date = models.DateTimeField(null=True, blank=True)
+    postponed_date = models.DateTimeField(null=True, blank=True)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+class client_sessions(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    User = models.ForeignKey(User, default=4, on_delete=models.CASCADE, null=True, blank=True, related_name='session_as_trainer')
+    session_no = models.IntegerField(default=1)
+    completed = models.BooleanField(default=True)
+    canceled = models.BooleanField(default=False)
+    session_date = models.DateField(null=True)
+    completed_at = models.DateField(null=True)
+    notes = models.CharField(max_length=255, null=True, blank=True)
+    canceled_by = models.CharField(max_length=65, null=True) #trainer, client
+    program_type = models.CharField(max_length=65, null=True) #Personal Traing, Group
+    group_attendance = models.CharField(max_length=65, null=True) #Attended, Not Attended
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+
+
+
+
+
 
 
 

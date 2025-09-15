@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 from django.db.models import Count
-from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram
+from .models import User, UserRole, Role, Program, Client, ProgramClient, ConsulationSchedules, TrainerConsultationDetails, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, Country, Leads, LeadsFollowup, DietitianConsultationDetails, weeklydietupdates, weeklydietupdates, BiweeklyUpdations, MeetingsTDC, MeetingTDCDetails, Measurementsclients, WeeklyMeeting, DietchartClient, ClientPauseLimit, ClientPause, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram, DailyTasks, client_sessions
 from dj_rest_auth.serializers import UserDetailsSerializer
 from django.utils.timezone import localtime
 from .constants import ROLE_PREFIXES 
@@ -120,11 +120,10 @@ class ProgramClientSerializer(serializers.ModelSerializer):
 
 class NewClientSerializer(serializers.ModelSerializer):
     programs = ProgramClientSerializer(many=True, read_only=True)
-
+    country_name = serializers.CharField(source='country.country_name', read_only=True)
     class Meta:
         model = Client
-        fields = ['id', 'name', 'email', 'phone', 'new_client', 'client_id', 
-                  'diet_first_consultation', 'trainer_first_consultation', 'programs']
+        fields = '__all__'
         
     def get_programs(self, obj):
         user = self.context['request'].user  # logged-in user
@@ -327,11 +326,6 @@ class BiweeklyUpdationsSerializer(serializers.ModelSerializer):
         model = BiweeklyUpdations
         fields = '__all__'
 
-class MeetingsTDCSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = MeetingsTDC
-        fields = '__all__'
-
 class DietitianConsultationDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = DietitianConsultationDetails
@@ -340,6 +334,19 @@ class DietitianConsultationDetailsSerializer(serializers.ModelSerializer):
 class MeetingTDCDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = MeetingTDCDetails
+        fields = '__all__'
+
+class TrainerMeetingTDCDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TrainerMeetingTDCDetails
+        fields = '__all__'
+
+class MeetingsTDCSerializer(serializers.ModelSerializer):
+    trainer_meeting_details = TrainerMeetingTDCDetailsSerializer(
+        many=True, read_only=True, source="trainermeetingtdcdetails_set"
+    )
+    class Meta:
+        model = MeetingsTDC
         fields = '__all__'
 
 class MeetingTDCDetailswithDietSerializer(serializers.ModelSerializer):
@@ -411,10 +418,7 @@ class ClientPauseSerializer(serializers.ModelSerializer):
         model = ClientPause
         fields = '__all__'
 
-class TrainerMeetingTDCDetailsSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TrainerMeetingTDCDetails
-        fields = '__all__'
+
     
 class ReschedulesSessionsSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.name', read_only=True)
@@ -425,3 +429,109 @@ class ReschedulesSessionsSerializer(serializers.ModelSerializer):
             'id', 'client', 'client_name', 'session_date',
             'cancelled_by', 'reschedule', 'reschedule_to', 'notes'
         ]
+
+class TasksSerializer(serializers.ModelSerializer):
+    
+    entity_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DailyTasks
+        fields = '__all__'  # plus entity_data
+        extra_fields = ['entity_data']
+
+    def get_entity_data(self, obj):
+        # If Lead Calls, get lead data
+        if obj.task_type == "Lead Calls":
+            try:
+                lead = Leads.objects.get(id=obj.client_id)  # obj.client_id gives the FK id
+                return {
+                    "id": lead.id,
+                    "name": lead.name,
+                    "phone": lead.phone,
+                    "email": lead.email,
+                    "status": lead.status
+                }
+            except Leads.DoesNotExist:
+                return None
+        else:
+            # Otherwise, get client data
+            try:
+                client = Client.objects.get(id=obj.client_id)
+                return {
+                    "id": client.id,
+                    "client_id": client.client_id,
+                    "name": client.name,
+                    "phone": client.phone,
+                    "email": client.email,
+                    "status": client.status
+                }
+            except Client.DoesNotExist:
+                return None
+            
+class ClientPersonalTrainingSerializer(serializers.ModelSerializer):
+    programs = ProgramClientSerializer(many=True, read_only=True)
+    leads = LeadSerializer(many=True, read_only=True)
+    country_name = serializers.CharField(source='country.country_name', read_only=True)
+    class Meta:
+        model = Client
+        fields = '__all__'
+    def get_programs(self, obj):
+        user = self.context['request'].user  # logged-in user
+        # Filter only programs where trainer is the logged-in user
+        program_clients = obj.programs.filter(
+            trainer=user,
+            program_type="Personal Training"
+        )
+        return ProgramClientSerializer(program_clients, many=True).data
+    
+class ClientGroupSerializer(serializers.ModelSerializer):
+    programs = ProgramClientSerializer(many=True, read_only=True)
+    leads = LeadSerializer(many=True, read_only=True)
+    country_name = serializers.CharField(source='country.country_name', read_only=True)
+    class Meta:
+        model = Client
+        fields = '__all__'
+    def get_programs(self, obj):
+        user = self.context['request'].user  # logged-in user
+        # Filter only programs where trainer is the logged-in user
+        program_clients = obj.programs.filter(
+            trainer=user,
+            program_type="Group"
+        )
+        return ProgramClientSerializer(program_clients, many=True).data
+
+class SessionSerializer(serializers.ModelSerializer):
+    
+    entity_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = client_sessions
+        fields = '__all__'  # plus entity_data
+        extra_fields = ['entity_data']
+
+    def get_entity_data(self, obj):
+        # If Lead Calls, get lead data
+        try:
+            client = Client.objects.get(id=obj.client_id)
+            # Use your existing ClientSerializer (includes programs, leads, etc.)
+            return ClientPersonalTrainingSerializer(client, context=self.context).data
+        except Client.DoesNotExist:
+            return None
+        
+class GroupSessionSerializer(serializers.ModelSerializer):
+    
+    entity_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = client_sessions
+        fields = '__all__'  # plus entity_data
+        extra_fields = ['entity_data']
+
+    def get_entity_data(self, obj):
+        # If Lead Calls, get lead data
+        try:
+            client = Client.objects.get(id=obj.client_id)
+            # Use your existing ClientSerializer (includes programs, leads, etc.)
+            return ClientGroupSerializer(client, context=self.context).data
+        except Client.DoesNotExist:
+            return None

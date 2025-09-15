@@ -6,8 +6,8 @@ from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, I
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram
-from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer, ReschedulesSessionsSerializer, MainProgramsSerializer, MainProgramCreateSerializer
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram, DailyTasks, TrainerConsultationDetails,client_sessions
+from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer, ReschedulesSessionsSerializer, MainProgramsSerializer, MainProgramCreateSerializer, TasksSerializer, SessionSerializer, GroupSessionSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, date, time
@@ -142,6 +142,7 @@ class ScheduleConsultationView(APIView):
         if serializer.is_valid():
                 serializer.save()
         type = serializer.validated_data.get('type')
+        consult_date = serializer.validated_data.get('datetime')
         
         
         if type == 'trainer':
@@ -151,6 +152,7 @@ class ScheduleConsultationView(APIView):
                 user_id = request.user.id
                 client = Client.objects.get(id=client_id)
                 client.trainer_first_consultation = 2
+                client.first_consulation_date_trainer = consult_date
 
                 
                 no_of_consultation = serializer.validated_data.get('no_of_consultation')
@@ -166,6 +168,21 @@ class ScheduleConsultationView(APIView):
                 if workout_start_date:
                     client.workout_start_date = workout_start_date
                 client.save()
+
+                DailyTasks.objects.create(
+                    client=client,
+                    User=request.user,             # sales from Client table
+                    MeetingsTDC=None,
+                    ClientPause=None,
+                    LeadsFollowup=None,
+                    task_type="First Trainer Consultation",
+                    date=consult_date,
+                    status=False,
+                    connected=False,
+                    actual_completion_date=None,
+                    notes=None
+                )
+
 
                 if workout_start_date and no_of_consultation == 2:
                     program_client = ProgramClient.objects.filter(client=client, status="active").last()
@@ -226,6 +243,7 @@ class ScheduleConsultationView(APIView):
                 user_id = request.user.id
                 client = Client.objects.get(id=client_id)
                 client.diet_first_consultation = 2
+                client.first_consulation_date_dietitian = consult_date
                 
                 no_of_consultation = serializer.validated_data.get('no_of_consultation')
                 if no_of_consultation == 2:
@@ -263,10 +281,25 @@ class ScheduleConsultationView(APIView):
                     )
 
                 client.save()
+
+                DailyTasks.objects.create(
+                    client=client,
+                    User=request.user,             # sales from Client table
+                    MeetingsTDC=None,
+                    ClientPause=None,
+                    LeadsFollowup=None,
+                    task_type="First Dietitian Consultation",
+                    date=consult_date,
+                    status=False,
+                    connected=False,
+                    actual_completion_date=None,
+                    notes=None
+                )
+
         return Response({'message': 'Consultation scheduled successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-class TrainerConsultationDetails(APIView):
+class TrainerConsultationDetailsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -283,6 +316,30 @@ class TrainerConsultationDetails(APIView):
 
             return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class prevMeetingDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, meeting_id):
+        meeting = get_object_or_404(MeetingsTDC, id=meeting_id)
+
+        previous_meeting = (
+            MeetingsTDC.objects.filter(
+                client=meeting.client,
+                trainer=meeting.trainer,
+                dietitian=meeting.dietitian,
+                status=True,
+                id__lt=meeting.id  # ensure it's before current
+            )
+            .order_by("-id")  # latest previous
+            .first()
+        )
+        if previous_meeting:
+            serializer = MeetingsTDCSerializer(previous_meeting)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response({"message": "No previous meeting found"}, status=status.HTTP_404_NOT_FOUND)
+        
     
 class DietitianConsultationDetailsView(APIView):
     permission_classes = [IsAuthenticated]
@@ -322,134 +379,283 @@ class DietitianConsultationDetailsView(APIView):
             elif is_trainer:
                 client.trainer_first_consultation = 1
 
-            client.new_client = False
+
+            # client.new_client = False
             client.save()
 
-            try:
-                subscription = ClientSubscription.objects.filter(client=client, subscription_type='new').latest('id')
-            except ClientSubscription.DoesNotExist:
-                return Response({'error': 'No subscription found'}, status=status.HTTP_404_NOT_FOUND)
-
-            program_months = subscription.program_months
-            start_date = date.today() + timedelta(days=1)
-            end_date = start_date + timedelta(days=program_months * 30)
-            subscription.program_start_date = start_date
-            subscription.program_end_date = end_date
-            subscription.save()
-
-            try:
-                program_client = ProgramClient.objects.get(client=client)
-            except ProgramClient.DoesNotExist:
-                return Response({'error': 'ProgramClient not found'}, status=status.HTTP_404_NOT_FOUND)
-
-            trainer = program_client.trainer
-            dietitian = program_client.dietitian
-            program_type = program_client.program_type
-
-            # If MeetingsTDC already exists, update status fields only
-            existing_meetings = MeetingsTDC.objects.filter(client=client, trainer=trainer, dietitian=dietitian)
-
-            if existing_meetings.exists():
-                if is_trainer:
-                    existing_meetings.update(trainer_status=True)
-                    MeetingsTDC.objects.filter(
-                        client=client,
-                        trainer=trainer,
-                        dietitian=dietitian,
-                        day_no=1,
-                        dietitian_status=True
-                    ).update(status=True)
-
-                elif is_dietitian:
-                    existing_meetings.update(dietitian_status=True)
-                    MeetingsTDC.objects.filter(
-                        client=client,
-                        trainer=trainer,
-                        dietitian=dietitian,
-                        day_no=1,
-                        trainer_status=True
-                    ).update(status=True)
-
-                return Response({'message': 'Meeting status updated successfully (no new meetings created).'}, status=status.HTTP_200_OK)
-
-            # Proceed to create new meetings
-            if program_type == 'Personal Training':
-                base_days = [1, 3, 10]
-                next_day = 25
-                while next_day <= (program_months * 30):
-                    base_days.append(next_day)
-                    next_day += 15
-                meeting_days = base_days
-            else:  # Group
-                base_days = [1, 10, 24]
-                next_day = 54
-                while next_day <= (program_months * 30):
-                    base_days.append(next_day)
-                    next_day += 30
-                meeting_days = base_days
-
-            for i, day in enumerate(meeting_days):
-                meeting_date = start_date + timedelta(days=day - 1)
-                meeting_type = self.get_meeting_type(day, i, len(meeting_days))
-
-                measurements = False
-                if meeting_type in ['Renewal', 'dietchart']:
-                    measurements = True
-                elif program_type == 'Group' and meeting_type == 'TDC':
-                    measurements = True
-                elif program_type == 'Personal Training' and meeting_type == 'TDC' and (i % 2 == 0):
-                    measurements = True
-
-                meeting = MeetingsTDC.objects.create(
-                    client=client,
-                    trainer=trainer,
-                    dietitian=dietitian,
-                    meeting_type=meeting_type,
-                    day_no=day,
-                    status=(day == 1),
-                    trainer_status=(request.user == 'trainer' and day == 1),
-                    dietitian_status=(request.user == 'dietitian' and day == 1),
-                    meeting_date=meeting_date,
-                    actual_meeting_date=None,
-                    measurements=measurements
+            if is_dietitian:
+                daily_task = DailyTasks.objects.filter(client=client, task_type='First Dietitian Consultation').latest('id')
+                DailyTasks.objects.filter(id=daily_task.id).update(
+                    status=True,
+                    actual_completion_date=timezone.now(),
+                    connected=True
+                )
+            elif is_trainer:
+                daily_task = DailyTasks.objects.filter(client=client, task_type='First Trainer Consultation').latest('id')
+                DailyTasks.objects.filter(id=daily_task.id).update(
+                    status=True,
+                    actual_completion_date=timezone.now(),
+                    connected=True
                 )
 
-                if request.user == trainer:
-                    TrainerMeetingTDCDetails.objects.create(
-                        meetingtdc=meeting,
-                        need_data=(True if (program_type == 'Group' or (program_type == 'Personal Training' and i % 2 == 0)) else False)
+                
+
+            if client.diet_first_consultation == 1 and client.trainer_first_consultation == 1:
+                client.new_client = False
+                client.save()
+
+                try:
+                    subscription = ClientSubscription.objects.filter(client=client, subscription_type='new').latest('id')
+                except ClientSubscription.DoesNotExist:
+                    return Response({'error': 'No subscription found'}, status=status.HTTP_404_NOT_FOUND)
+
+                program_months = subscription.program_months
+                start_date = date.today() + timedelta(days=1)
+                end_date = start_date + timedelta(days=program_months * 30)
+                subscription.program_start_date = start_date
+                subscription.program_end_date = end_date
+                subscription.save()
+
+                # Sessions calculating
+                program_client = ProgramClient.objects.filter(client=client).latest('id')
+                workout_days = program_client.workout_days  # e.g. ["sunday", "tuesday", "thursday"]
+                # Map weekdays to numbers (Python: Monday=0, Sunday=6)
+                weekday_map = {
+                    "monday": 0, "tuesday": 1, "wednesday": 2,
+                    "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6
+                }
+                selected_days = [weekday_map[d.lower()] for d in workout_days]
+
+                # Generate sessions
+                sessions = []
+                session_no = 1
+                current_date = start_date
+
+                while current_date <= end_date:
+                    if current_date.weekday() in selected_days:
+                        sessions.append(client_sessions(
+                            client=client,
+                            User=trainer,
+                            session_no=session_no,
+                            program_type = program_type,
+                            completed=False,  # should default to False since not yet done
+                            session_date=current_date
+                        ))
+                        session_no += 1
+                    current_date += timedelta(days=1)
+
+                # Bulk create for efficiency
+                client_sessions.objects.bulk_create(sessions)
+
+
+            if client.diet_first_consultation == 1 and client.trainer_first_consultation == 1:
+                try:
+                    program_client = ProgramClient.objects.get(client=client)
+                except ProgramClient.DoesNotExist:
+                    return Response({'error': 'ProgramClient not found'}, status=status.HTTP_404_NOT_FOUND)
+
+                trainer = program_client.trainer
+                dietitian = program_client.dietitian
+                program_type = program_client.program_type
+
+                # If MeetingsTDC already exists, update status fields only
+                existing_meetings = MeetingsTDC.objects.filter(client=client, trainer=trainer, dietitian=dietitian)
+
+                if existing_meetings.exists():
+                    if is_trainer:
+                        existing_meetings.update(trainer_status=True)
+                        MeetingsTDC.objects.filter(
+                            client=client,
+                            trainer=trainer,
+                            dietitian=dietitian,
+                            day_no = 1,
+                            dietitian_status=True
+                        ).update(status=True)
+
+                    elif is_dietitian:
+                        existing_meetings.update(dietitian_status=True)
+                        MeetingsTDC.objects.filter(
+                            client=client,
+                            trainer=trainer,
+                            dietitian=dietitian,
+                            day_no=1,
+                            trainer_status=True
+                        ).update(status=True)
+
+                    return Response({'message': 'Meeting status updated successfully (no new meetings created).'}, status=status.HTTP_200_OK)
+
+                # Proceed to create new meetings
+                if program_type == 'Personal Training':
+                    base_days = [1, 3, 10]
+                    next_day = 25
+                    while next_day <= (program_months * 30):
+                        base_days.append(next_day)
+                        next_day += 15
+                    meeting_days = base_days
+                else:  # Group
+                    base_days = [1, 3, 10, 24]
+                    next_day = 54
+                    while next_day <= (program_months * 30):
+                        base_days.append(next_day)
+                        next_day += 30
+                    meeting_days = base_days
+
+                for i, day in enumerate(meeting_days):
+                    meeting_date = start_date + timedelta(days=day - 1)
+                    meeting_type = self.get_meeting_type(day, i, len(meeting_days))
+
+                    measurements = False
+                    if meeting_type in ['Renewal', 'dietchart']:
+                        measurements = True
+                    elif program_type == 'Group' and meeting_type == 'TDC':
+                        measurements = True
+                    elif program_type == 'Personal Training' and meeting_type == 'TDC' and (i % 2 == 0):
+                        measurements = True
+
+                    meeting = MeetingsTDC.objects.create(
+                        client=client,
+                        trainer=trainer,
+                        dietitian=dietitian,
+                        meeting_type=meeting_type,
+                        day_no=day,
+                        status=(day == 1),
+                        trainer_status=(day == 1),
+                        dietitian_status=(day == 1),
+                        meeting_date=meeting_date,
+                        actual_meeting_date=None,
+                        measurements=measurements,
+                        meeting_for='dietitian' if day in (3, 10) else 'both'
                     )
 
-                if measurements:
-                    Measurementsclients.objects.create(meetingtdc=meeting)
+                    if day == 1:
+                        consultation = TrainerConsultationDetails.objects.filter(client=client).last()
+                        if consultation:
+                            TrainerMeetingTDCDetails.objects.create(
+                                meetingtdc=meeting,
+                                half_sit_up=consultation.half_sit_up,
+                                modified_push_ups=consultation.modified_push_ups,
+                                plank_hold=consultation.plank_hold,
+                                wall_sqaut_hold=consultation.wall_sqaut_hold,
+                                shoulder_flexibility=consultation.shoulder_flexibility,
+                                sit_and_reach=consultation.sit_and_reach,
+                                hamstring_flexibility=consultation.hamstring_flexibility,
+                                quadriceps_flexibility=consultation.quadriceps_flexibility,
+                                rounded_shoulder=consultation.rounded_shoulder,
+                                kyphosis=consultation.kyphosis,
+                                lordosis=consultation.lordosis,
+                                scoliosis=consultation.scoliosis,
+                                bow_leg=consultation.bow_leg,
+                                knock_knees=consultation.knock_knees,
+                                winging_of_scapula=consultation.winging_of_scapula,
+                                flat_foot=consultation.flat_foot,
+                                notes=consultation.notes,
+                                status=True,
+                                need_data=True
+                            )
 
-            def get_saturdays(start_date, end_date):
-                saturdays = []
-                current_date = start_date
-                while current_date <= end_date:
-                    if current_date.weekday() == 5:
-                        saturdays.append(current_date)
-                    current_date += timedelta(days=1)
-                return saturdays
+                    # first_consultation_data = 
 
-            saturdays = get_saturdays(start_date, end_date)
+                    if day != 1:
 
-            for week_no, sat_date in enumerate(saturdays, start=1):
-                WeeklyMeeting.objects.create(
-                    client=client,
-                    dietitian_id=dietitian,
-                    height=0,
-                    weight=0,
-                    bmi=0,
-                    notes=None,
-                    week_no=week_no,
-                    meeting_date=sat_date,
-                    entered_date=None
-                )
+                        # sales tasks
+                        DailyTasks.objects.create(
+                            client=client,
+                            User=client.sales,             # sales from Client table
+                            MeetingsTDC=meeting,
+                            ClientPause=None,
+                            LeadsFollowup=None,
+                            task_type="Renewal" if meeting_type == "Renewal" else "ActiveClient Followup",
+                            date=meeting_date,
+                            status=False,
+                            connected=False,
+                            actual_completion_date=None,
+                            notes=None
+                        )
+                        if day != 3 and day != 10:
+                            # Trainer tasks 
+                            DailyTasks.objects.create(
+                                client=client,
+                                User=trainer,             # sales from Client table
+                                MeetingsTDC=meeting,
+                                ClientPause=None,
+                                LeadsFollowup=None,
+                                task_type= meeting_type,
+                                date=meeting_date,
+                                status=False,
+                                connected=False,
+                                actual_completion_date=None,
+                                notes=None
+                            )
 
-            return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+                        # Dietitian Tasks
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        DailyTasks.objects.create(
+                            client=client,
+                            User=dietitian,             # sales from Client table
+                            MeetingsTDC=meeting,
+                            ClientPause=None,
+                            LeadsFollowup=None,
+                            task_type= meeting_type,
+                            date=meeting_date,
+                            status=False,
+                            connected=False,
+                            actual_completion_date=None,
+                            notes=None
+                        )
+
+                    if request.user == trainer:
+                        if day != 1:
+                            TrainerMeetingTDCDetails.objects.create(
+                                meetingtdc=meeting,
+                                need_data=(True if (program_type == 'Group' or (program_type == 'Personal Training' and i % 2 == 0)) else False)
+                            )
+
+                    if measurements:
+                        Measurementsclients.objects.create(meetingtdc=meeting)
+
+
+                def get_saturdays(start_date, end_date):
+                    saturdays = []
+                    current_date = start_date
+                    while current_date <= end_date:
+                        if current_date.weekday() == 5:
+                            saturdays.append(current_date)
+                        current_date += timedelta(days=1)
+                    return saturdays
+
+                saturdays = get_saturdays(start_date, end_date)
+
+                for week_no, sat_date in enumerate(saturdays, start=1):
+                    weekly_meeting = WeeklyMeeting.objects.create(
+                        client=client,
+                        dietitian_id=dietitian,
+                        height=0,
+                        weight=0,
+                        bmi=0,
+                        notes=None,
+                        week_no=week_no,
+                        meeting_date=sat_date,
+                        entered_date=None
+                    )
+
+                    DailyTasks.objects.create(
+                        client=client,
+                        User=dietitian,             
+                        MeetingsTDC=None,
+                        ClientPause=None,
+                        LeadsFollowup=None,
+                        WeeklyMeeting = weekly_meeting,
+                        task_type="Weekly Meeting",
+                        date=sat_date,
+                        status=False,
+                        connected=False,
+                        actual_completion_date=None,
+                        notes=None
+                    )
+
+                return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+        return Response({'message': 'Consultation Data saved successfully', 'data': serializer.data}, status=status.HTTP_201_CREATED)
+    # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get_meeting_type(self, day, index, total):
         if day == 1:
@@ -514,7 +720,7 @@ class DietitianClientListView(APIView):
 
         for client in clients:
             pause_info = {
-                'pause_available': False,
+                'pause_available': True,
                 'pause_days_remaining': 0,
                 'pauses_remaining': 0
             }
@@ -965,12 +1171,27 @@ class LeadCreateView(APIView):
             lead = serializer.save()
 
             # Automatically create follow-up entry
-            LeadsFollowup.objects.create(
+            followup = LeadsFollowup.objects.create(
                 lead_id=lead.id,
                 sales_id=request.user.id,
                 follow_up_date=lead.follow_up_date,  # or use timezone.now().date() if dynamic
                 notes=lead.notes,
                 status=False  # default follow-up status
+            )
+
+             # Create DailyTasks record
+            DailyTasks.objects.create(
+                client_id=lead.id,              # FK to Client
+                User=request.user,               # FK to User
+                MeetingsTDC=None,
+                ClientPause=None,
+                LeadsFollowup=followup,          # FK to LeadsFollowup
+                task_type="Lead Calls",
+                date=lead.follow_up_date,
+                status=False,
+                connected=False,
+                # actual_completion_date=None,     # will not auto-add if we override
+                notes=None
             )
 
             return Response({
@@ -1148,7 +1369,8 @@ class AssignTrainerDietitianView(APIView):
             program_end_date=program_end_date,
             amount=amount,
             subscription_type='new',
-            subscription_id=subscription_id  # ✅ Set the new formatted ID
+            subscription_id=subscription_id,  # ✅ Set the new formatted ID
+            program_type = program.program_type
         )
         return Response({'message': 'Trainer & Dietitian assigned successfully'}, status=status.HTTP_200_OK)
         
@@ -1174,6 +1396,12 @@ class followupStatusUpdateView(APIView):
             followup.lead_status = lead_status
             followup.notes = notes
             followup.save()
+
+            DailyTasks.objects.filter(LeadsFollowup=followup_id).update(
+                status=True,
+                actual_completion_date=timezone.now(),
+                connected=True
+            )
 
             if lead_status == 'Converted':
                 lead = get_object_or_404(Leads, id=lead.id)
@@ -1217,7 +1445,7 @@ class followupStatusUpdateView(APIView):
                 }, status=status.HTTP_201_CREATED)
             
             if lead_status != 'Converted':
-                LeadsFollowup.objects.create(
+                next_followup = LeadsFollowup.objects.create(
                     lead=lead,
                     sales=request.user,
                     follow_up_date=followup_date,  # or set next date if needed
@@ -1226,6 +1454,21 @@ class followupStatusUpdateView(APIView):
                     notes=None,
                     activity_type=activity_type
                 )
+
+                DailyTasks.objects.create(
+                    client_id=lead.id,
+                    User=request.user,
+                    MeetingsTDC=None,
+                    ClientPause=None,
+                    LeadsFollowup=next_followup,
+                    task_type="Lead Calls",
+                    date=followup_date,
+                    status=False,
+                    connected=False,
+                    actual_completion_date=None,
+                    notes=None
+                )
+
                 return Response({'message': 'Followup updated successfully'}, status=status.HTTP_200_OK)
 
         except LeadsFollowup.DoesNotExist:
@@ -1700,7 +1943,7 @@ class DietFirstConsultationDetails(APIView):
         user = request.user
 
         try:
-            consultation = DietitianConsultationDetails.objects.get(client_id=client_id, user=user)
+            consultation = DietitianConsultationDetails.objects.filter(client_id=client_id, user=user).latest('id')
         except DietitianConsultationDetails.DoesNotExist:
             return Response({'error': 'No consultation data found for this client.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1752,6 +1995,13 @@ class DietMeetingUpdationsView(APIView):
                 notes=data.get('notes'),
                 diet_plan_uploaded_at=date.today()
             )
+
+        DailyTasks.objects.filter(MeetingsTDC=meeting).update(
+            status=True,
+            actual_completion_date=timezone.now(),
+            connected=True,
+            notes = data.get('notes'),
+        )
 
         return Response({'message': 'Measurements and diet chart updated successfully.'}, status=status.HTTP_201_CREATED)
     
@@ -1894,12 +2144,20 @@ class RemidersListView(APIView):
 class UpdateMeetingView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, update, meeting_id):
+    def post(self, request):
         try:
-            meeting = MeetingsTDC.objects.get(id=meeting_id)
+            data = request.data
+            meeting_id = data.get('meeting_id')
+            update = data.get('need_meeting')
+            notes = data.get('notes')
+
+            daily_task = DailyTasks.objects.get(id = meeting_id)
+            tdc_id = daily_task.MeetingsTDC_id
+            
+            meeting = MeetingsTDC.objects.get(id=tdc_id)
 
             # Update need_meeting field
-            if update == "yes":
+            if update == "Yes":
                 meeting.need_meeting = 2
             else:
                 meeting.need_meeting = 0
@@ -1907,14 +2165,23 @@ class UpdateMeetingView(APIView):
             meeting.save()
 
             # Add a record to MeetingTDCDetails
-            if update == "no":
+            if update == "No":
                 MeetingTDCDetails.objects.create(
                     meetingtdc=meeting,
-                    notes="no need of meeting",
+                    notes=notes,
                     change_dietplan=False,
                     uploaded=False,
                     diet_plan_uploaded_at=timezone.now().date()
                 )
+
+                DailyTasks.objects.filter(id=meeting_id).update(
+                    status=True,
+                    actual_completion_date=timezone.now(),
+                    connected=True,
+                    notes = notes
+                )
+
+
 
             return Response({"message": "Meeting updated successfully."})
 
@@ -2245,7 +2512,7 @@ class PauseClientDetailsView(APIView):
         latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
         if not latest_subscription:
             return Response({'error': 'No subscription found for this client'}, status=status.HTTP_404_NOT_FOUND)
-
+        
         if latest_subscription.program_type != 'Personal Training':
             return Response({'error': 'Pause only available for Personal Training clients'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -2764,6 +3031,13 @@ class TrainerMeetingsUpdationsView(APIView):
 
         meeting.save()
 
+        DailyTasks.objects.filter(MeetingsTDC_id=meeting_id).update(
+            status=True,
+            actual_completion_date=timezone.now(),
+            connected=True
+        )
+
+
         return Response({'message': 'Trainer meeting details updated successfully.'}, status=status.HTTP_200_OK)
     
 class RescheduleSessionView(APIView):
@@ -2921,8 +3195,22 @@ class ClientCreateView(APIView):
 class AllClientListView(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
-        user = request.user.id
-        clients = Client.objects.order_by('-created_at').distinct()
+        status = request.query_params.get('status')
+        from_date = request.query_params.get('from_date')
+        to_date = request.query_params.get('to_date')
+
+        clients = Client.objects.all()
+
+        if status:
+            if status=='Active':
+                clients = clients.filter(status='Converted')
+            elif status == 'Inactive':
+                clients = clients.filter(status=status)
+
+        if from_date and to_date:
+            clients = clients.filter(created_at__date__range=[from_date, to_date])
+
+        clients = clients.order_by('-created_at').distinct()
         serializer =ClientSerializer(clients, many=True)
         return Response(serializer.data)
 
@@ -2930,9 +3218,497 @@ class AllLeadsListView(APIView):
     
     permission_classes = [IsAuthenticated]
     def get(self, request):
-        # users = User.objects.filter(status=True)
-        user = request.user.id
-        leads = Leads.objects.order_by('-created_at')  # DESC order = LIFO
+        status = request.query_params.get('status')
+        from_date = request.query_params.get('from_date')
+        to_date = request.query_params.get('to_date')
+
+        leads = Leads.objects.all()
+
+        if status:
+            leads = leads.filter(status=status)
+                
+
+        if from_date and to_date:
+            leads = leads.filter(created_at__date__range=[from_date, to_date])
+
+        leads = leads.order_by('-created_at')  # DESC order = LIFO
         serializer = LeadsSerializer(leads, many=True)
+        return Response(serializer.data)
+
+class TaskListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.id
+        today = date.today()
+
+        tasks = DailyTasks.objects.filter(User=user, status=False, date__lte=today).order_by('date', '-created_at')  # DESC order = LIFO
+        serializer = TasksSerializer(tasks, many=True)
+        return Response(serializer.data)
+
+class UpdateDailyTaskView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        task_id = request.POST.get("task_id")
+        connected = request.POST.get("connected")  # "True" or "False" from Vue
+        next_date = request.POST.get("date")       # string from form
+        notes = request.POST.get("notes", "")
+
+        task = get_object_or_404(DailyTasks, id=task_id)
+
+        # Update existing task
+        is_connected = True if connected == "True" else False
+        task.status = True
+        task.connected = is_connected
+        task.actual_completion_date = timezone.now()
+        task.postponed_date = next_date
+        task.notes = notes
+        task.save()
+
+        # If not connected, add another row with next_date
+        if not is_connected and next_date:
+            DailyTasks.objects.create(
+                client=task.client,
+                User=task.User,
+                MeetingsTDC=task.MeetingsTDC,
+                ClientPause=task.ClientPause,
+                LeadsFollowup=task.LeadsFollowup,
+                task_type=task.task_type,
+                date=next_date,  # future follow-up
+                status=False,    # new task not yet done
+                connected=False,
+                notes=notes
+            )
+
+        return Response({
+            "success": True,
+            "message": "Task updated successfully",
+            "data": {
+                "task_id": task.id,
+                "connected": task.connected,
+                "status": task.status,
+                "completion_date": task.actual_completion_date,
+                "notes": task.notes
+            }
+        }, status=200)
+
+
+class TaskListByUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sales_id, taskdate, status):
+        user = request.user.id
+
+        # Base filter
+        tasks = DailyTasks.objects.filter(User=sales_id, date__lte=taskdate)
+
+        # Apply status filter dynamically
+        if status.lower() == "pending":
+            tasks = tasks.filter(status=False)
+        elif status.lower() == "completed":
+            tasks = tasks.filter(status=True)
+        elif status.lower() == "not connected":
+            tasks = tasks.filter(status=True, connected=False)
+        elif status.lower() == "all":
+            pass  # no status filter
+
+        # Ordering
+        tasks = tasks.order_by('date', '-created_at')
+
+        serializer = TasksSerializer(tasks, many=True)
+        return Response(serializer.data)
+        
+
+class SessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.id
+        today = date.today()
+
+        tasks = client_sessions.objects.filter(User=user, program_type='Personal Training', completed=False, session_date__lte=today).order_by('session_date', '-created_at')  # DESC order = LIFO
+        serializer = SessionSerializer(tasks, many=True)
+        return Response(serializer.data)
+    
+class updateDailySessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        session_id = request.POST.get("session_id")
+        status_value = request.POST.get("status")
+        notes = request.POST.get("notes")
+        
+
+        try:
+            session = client_sessions.objects.get(id=session_id)
+            if status_value == "1":   # Completed
+                session.completed = 1
+                session.completed_at = now().date()
+            elif status_value == "0":  # Cancelled
+                canceled_by = request.POST.get("canceled_by")
+
+                if canceled_by == 'Trainer':
+                    client = session.client
+                    all_sessions = client_sessions.objects.filter(client=client, id__gt=session.id).order_by("session_no")
+
+                    for s in all_sessions:
+                        s.session_no -= 1
+                        s.save()
+                    try:
+                        program = ProgramClient.objects.filter(client=client).latest("id")
+                    except ProgramClient.DoesNotExist:
+                        return Response({"error": "No Program found for this client"}, status=status.HTTP_404_NOT_FOUND)
+                    
+                    last_session_no = client_sessions.objects.filter(client=client).order_by("-session_no").first().session_no
+                    # find next session_date based on workout_days
+                    from datetime import timedelta
+
+                    workout_days = program.workout_days or []  # e.g. ["sunday", "tuesday"]
+                    workout_days = [day.lower() for day in workout_days]
+
+                    
+                    last_session = client_sessions.objects.filter(client=client).order_by("-session_no").first()
+                    last_session_no = last_session.session_no
+                    last_session_date = last_session.session_date
+                    next_date = last_session_date
+
+                    while True:
+                        next_date += timedelta(days=1)
+                        if next_date.strftime("%A").lower() in workout_days:
+                            break
+
+                    client_sessions.objects.create(
+                        client=client,
+                        User=session.User,
+                        session_no=last_session_no + 1,
+                        completed=False,
+                        canceled=False,
+                        session_date=next_date
+                    )
+
+
+                session.completed = 1
+                session.canceled = 1
+                session.canceled_by = canceled_by
+                session.completed_at = now().date()
+
+            session.notes = notes
+            session.save()
+            return Response({"message": "Session updated successfully"}, status=status.HTTP_200_OK)
+        except client_sessions.DoesNotExist:
+            return Response({"error": "Session not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class GroupSessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user  # logged-in trainer
+        today = date.today()
+
+        # Step 1: Get all ProgramClients of type Group where trainer = user
+        group_program_clients = ProgramClient.objects.filter(
+            trainer=user,
+            program_type="Group"
+        )
+
+        # Step 2: Collect sessions of these clients (up to today)
+        sessions = client_sessions.objects.filter(
+            client__in=[pc.client for pc in group_program_clients],
+            session_date__lte=today,
+            completed=False
+        ).order_by("session_date")
+
+        # Step 3: Build grouped structure by program -> date
+        data = {}
+        total_pending_count = 0
+
+        for pc in group_program_clients:
+            prog_id = pc.program.id
+            program_name = pc.program.name
+
+            # Get this client’s pending sessions
+            client_sessions_list = sessions.filter(client=pc.client)
+
+            # count pending sessions
+            pending_count = client_sessions_list.count()
+            total_pending_count += pending_count
+
+            for s in client_sessions_list:
+                prog_date_key = (prog_id, s.session_date)
+
+                if prog_date_key not in data:
+                    data[prog_date_key] = {
+                        "program": program_name,
+                        "program_id": prog_id,
+                        "date": s.session_date,
+                        "clients": {}
+                    }
+
+                if pc.client.id not in data[prog_date_key]["clients"]:
+                    data[prog_date_key]["clients"][pc.client.id] = {
+                        "client_id": pc.client.id,
+                        "client_name": pc.client.name,
+                        "pending_count": pending_count,
+                        "sessions": []
+                    }
+
+                # Add session
+                data[prog_date_key]["clients"][pc.client.id]["sessions"].append({
+                    "session_id": s.id,
+                    "session_no": s.session_no,
+                    "date": s.session_date,
+                    "completed": s.completed,
+                    "canceled": s.canceled
+                })
+
+        # Step 4: format clients dict -> list
+        programs_output = []
+        for prog_key, prog_val in data.items():
+            prog_val["clients"] = list(prog_val["clients"].values())
+            programs_output.append(prog_val)
+
+        # Step 5: return response with total pending
+        return Response({
+            "total_pending_sessions": total_pending_count,
+            "programs": programs_output
+        })
+
+class updateDailyGroupSessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        selected_clients = request.POST.get("selectedClients", "")
+        all_clients = request.POST.get("allClients", "")
+        cancelClients = request.POST.get("cancelClients", "")
+        notes = request.POST.get('notes', '')
+        status_value = request.POST.get("status")
+
+        today = date.today()
+
+        # Convert to lists of ints
+        session_ids_attended = [int(i) for i in selected_clients.split(",") if i.strip()]
+        session_ids_all = [int(i) for i in all_clients.split(",") if i.strip()]
+
+        if status_value == "1":
+            # ✅ Mark attended sessions
+            attended_sessions = client_sessions.objects.filter(id__in=session_ids_attended)
+            attended_sessions.update(
+                completed=True,
+                completed_at=today,
+                notes=notes,
+                group_attendance="Attended"
+            )
+
+            # ✅ Mark not attended sessions (difference)
+            not_attended_ids = set(session_ids_all) - set(session_ids_attended)
+            not_attended_sessions = client_sessions.objects.filter(id__in=not_attended_ids)
+            not_attended_sessions.update(
+                completed=True,
+                completed_at=today,
+                notes=notes,
+                group_attendance="Not Attended"
+            )
+
+            return Response({"message": "Session updated successfully"}, status=status.HTTP_200_OK)
+        elif status_value == '0':
+            session_ids = [int(i) for i in all_clients.split(",") if i.strip()]
+            client_ids_all = [int(i) for i in cancelClients.split(",") if i.strip()]
+
+            for index, session_id in enumerate(session_ids):
+                session = client_sessions.objects.get(id=session_id)
+                session.completed = 1
+                session.canceled = 1
+                session.canceled_by = 'Trainer'
+                session.completed_at = now().date()
+                session.notes = notes
+                session.save()
+                client_id = client_ids_all[index]
+                session_no = session.session_no
+
+                client = Client.objects.filter(id=client_id).first()
+                if not client:
+                    continue
+                program_client = ProgramClient.objects.filter(client=client).first()
+                if not program_client:
+                    continue
+
+                workout_days = program_client.workout_days or []  # e.g. ["monday", "wednesday"]
+
+                # ✅ Shift later sessions down
+                client_sessions.objects.filter(
+                    client=client,
+                    session_no__gt=session_no
+                ).update(session_no=F("session_no") - 1)
+
+                # ✅ Add new session at end with calculated next_date
+                last_session = client_sessions.objects.filter(client=client).order_by("-session_no").first()
+                last_session_no = last_session.session_no
+                last_session_date = last_session.session_date or today
+                next_date = last_session_date
+
+                while True:
+                    next_date += timedelta(days=1)
+                    if next_date.strftime("%A").lower() in [d.lower() for d in workout_days]:
+                        break
+
+                client_sessions.objects.create(
+                    client=client,
+                    User=program_client.trainer,
+                    session_no=last_session_no + 1,
+                    completed=False,
+                    canceled=False,
+                    session_date=next_date,
+                    program_type=program_client.program_type
+                )
+
+            return Response({"message": "Session canceled successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "Session not updated successfully"}, status=status.HTTP_200_OK)
+
+class TrainerClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        trainer = request.user
+        clients = Client.objects.filter(
+            new_client = False,
+            programs__trainer=trainer,
+            programs__program_type="Personal Training"
+        ).distinct()
+
+        serializer = ClientSerializer(clients, many=True)
+        return Response(serializer.data, status=200)
+
+class TrainerClientSessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user.id
+        today = date.today()
+
+        tasks = client_sessions.objects.filter(client_id=client_id, program_type='Personal Training').order_by('session_no')  # DESC order = LIFO
+        serializer = SessionSerializer(tasks, many=True)
+        return Response(serializer.data)
+
+class TrainerGroupClientListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        trainer = request.user
+        clients = Client.objects.filter(
+            new_client = False,
+            programs__trainer=trainer,
+            programs__program_type="Group"
+        ).distinct()
+
+        serializer = ClientSerializer(clients, many=True)
+        return Response(serializer.data, status=200)
+    
+class TrainerClientGroupSessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user.id
+        today = date.today()
+
+        tasks = client_sessions.objects.filter(client_id=client_id, program_type='Group').order_by('session_no')  # DESC order = LIFO
+        serializer = SessionSerializer(tasks, many=True)
+        return Response(serializer.data)
+    
+class TrainerGroupSessionListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, program_id):
+        user = request.user  # logged-in trainer
+        today = date.today()
+
+        # Step 1: Get all ProgramClients of type Group where trainer = user
+        group_program_clients = ProgramClient.objects.filter(
+            trainer=user,
+            program_type="Group",
+            program_id = program_id
+        )
+
+        # Step 2: Collect sessions of these clients (up to today)
+        sessions = client_sessions.objects.filter(
+            client__in=[pc.client for pc in group_program_clients],
+            
+        ).order_by("session_date")
+
+        # Step 3: Build grouped structure by program -> date
+        data = {}
+        total_pending_count = 0
+
+        for pc in group_program_clients:
+            prog_id = pc.program.id
+            program_name = pc.program.name
+
+            # Get this client’s pending sessions
+            client_sessions_list = sessions.filter(client=pc.client)
+
+            # count pending sessions
+            pending_count = client_sessions_list.count()
+            total_pending_count += pending_count
+
+            for s in client_sessions_list:
+                prog_date_key = (prog_id, s.session_date)
+
+                if prog_date_key not in data:
+                    data[prog_date_key] = {
+                        "program": program_name,
+                        "program_id": prog_id,
+                        "date": s.session_date,
+                        "clients": {}
+                    }
+
+                if pc.client.id not in data[prog_date_key]["clients"]:
+                    data[prog_date_key]["clients"][pc.client.id] = {
+                        "client_id": pc.client.id,
+                        "client_name": pc.client.name,
+                        "pending_count": pending_count,
+                        "sessions": []
+                    }
+
+                # Add session
+                data[prog_date_key]["clients"][pc.client.id]["sessions"].append({
+                    "session_id": s.id,
+                    "session_no": s.session_no,
+                    "date": s.session_date,
+                    "completed": s.completed,
+                    "canceled": s.canceled,
+                    "group_attendance": s.group_attendance
+                })
+
+        # Step 4: format clients dict -> list
+        programs_output = []
+        for prog_key, prog_val in data.items():
+            prog_val["clients"] = list(prog_val["clients"].values())
+            programs_output.append(prog_val)
+
+        # Step 5: return response with total pending
+        return Response({
+            "total_pending_sessions": total_pending_count,
+            "programs": programs_output
+        })
+
+
+class trainerGroupListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user  # logged-in trainer
+        programs = Program.objects.filter(status='active', program_trainer = user, program_type = 'Group').select_related('mainprogram')
+        serializer = ProgramsSerializer(programs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class fetchClientSessionsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, client_id):
+        user = request.user.id
+        today = date.today()
+
+        tasks = client_sessions.objects.filter(client_id=client_id).order_by('session_no')  # DESC order = LIFO
+        serializer = SessionSerializer(tasks, many=True)
+        return Response(serializer.data)
 
