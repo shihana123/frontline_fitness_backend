@@ -716,6 +716,8 @@ class DietitianClientListView(APIView):
         user = request.user.id
         clients = Client.objects.filter(new_client=False, programs__dietitian_id=user).distinct()
 
+        
+
         client_data = []
 
         for client in clients:
@@ -724,6 +726,11 @@ class DietitianClientListView(APIView):
                 'pause_days_remaining': 0,
                 'pauses_remaining': 0
             }
+            client_paused_data = {}
+            if(client.paused == True):
+                latest_pause = ClientPause.objects.filter(client_id = client.id).order_by('-id').first()
+                client_paused_data = ClientPauseSerializer(latest_pause).data if latest_pause else {}
+
 
             # Get latest subscription
             latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
@@ -751,6 +758,8 @@ class DietitianClientListView(APIView):
 
             serialized = ClientSerializer(client).data
             serialized['pause_info'] = pause_info
+            serialized['paused_details'] = client_paused_data
+
             client_data.append(serialized)
 
         return Response(client_data)
@@ -2513,8 +2522,8 @@ class PauseClientDetailsView(APIView):
         if not latest_subscription:
             return Response({'error': 'No subscription found for this client'}, status=status.HTTP_404_NOT_FOUND)
         
-        if latest_subscription.program_type != 'Personal Training':
-            return Response({'error': 'Pause only available for Personal Training clients'}, status=status.HTTP_400_BAD_REQUEST)
+        # if latest_subscription.program_type != 'Personal Training':
+        #     return Response({'error': 'Pause only available for Personal Training clients'}, status=status.HTTP_400_BAD_REQUEST)
 
         sub_months = latest_subscription.program_months
 
@@ -2629,6 +2638,14 @@ class PauseClientView(APIView):
         client.program_end_date = program_end_date_changed
         client.save()
 
+        has_overlap = MeetingsTDC.objects.filter(
+            client=client,
+            status=False,
+            meeting_date__range=[paused_from_date, paused_to_date]
+        ).exists()
+
+        # return Response({'message': has_overlap}, status=status.HTTP_200_OK)
+
         # Update MeetingsTDC
         MeetingsTDC.objects.filter(client=client, status=False).update(
             meeting_date=models.F('meeting_date') + timedelta(days=pause_days),
@@ -2678,6 +2695,11 @@ class PauseClientListView(APIView):
                 'pauses_remaining': 0
             }
 
+            client_paused_data = {}
+            if(client.paused == True):
+                latest_pause = ClientPause.objects.filter(client_id = client.id).order_by('-id').first()
+                client_paused_data = ClientPauseSerializer(latest_pause).data if latest_pause else {}
+
             # Get latest subscription
             latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
             if latest_subscription and latest_subscription.program_type == 'Personal Training':
@@ -2704,6 +2726,7 @@ class PauseClientListView(APIView):
 
             serialized = ClientSerializer(client).data
             serialized['pause_info'] = pause_info
+            serialized['paused_details'] = client_paused_data
             client_data.append(serialized)
 
         return Response(client_data)
@@ -2855,6 +2878,58 @@ class SalesPauseClientListView(APIView):
     def get(self, request):
         user = request.user.id
         clients = Client.objects.filter(new_client=False, sales_id=user, paused=True).distinct()
+        client_data = []
+
+        for client in clients:
+            pause_info = None
+            latest_pause = None
+
+            latest_subscription = ClientSubscription.objects.filter(client=client).order_by('-id').first()
+            if latest_subscription and latest_subscription.program_type == 'Personal Training':
+                sub_months = latest_subscription.program_months
+
+                try:
+                    rule = SubscriptionPause.objects.get(subscription_months=sub_months)
+                except SubscriptionPause.DoesNotExist:
+                    rule = None
+
+                try:
+                    pause_limit = ClientPauseLimit.objects.get(client=client)
+                    pause_info = ClientPauseLimitSerializer(pause_limit).data
+                except ClientPauseLimit.DoesNotExist:
+                    if rule:
+                        pause_info = {
+                            "client": client.id,
+                            "subscription_months": sub_months,
+                            "no_of_days_available": rule.no_of_days,
+                            "no_of_pauses_available": rule.no_of_pauses,
+                            "no_of_paused_days": 0,
+                            "no_of_pauses_taken": 0,
+                            "no_of_pause_days_rem": rule.no_of_days,
+                            "no_of_pause_rem": rule.no_of_pauses,
+                            "created_at": None,
+                            "updated_at": None
+                        }
+
+            # 👇 Get last ClientPause record
+            last_pause = ClientPause.objects.filter(client=client).order_by('-id').first()
+            if last_pause:
+                latest_pause = ClientPauseSerializer(last_pause).data
+
+            serialized_client = ClientSerializer(client).data
+            serialized_client['pause_info'] = pause_info
+            serialized_client['latest_pause_record'] = latest_pause
+
+            client_data.append(serialized_client)
+
+        return Response(client_data)
+
+class PauseClientListTrainerView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user.id
+        clients = Client.objects.filter(new_client=False, programs__trainer_id=user, paused=True).distinct()
         client_data = []
 
         for client in clients:
