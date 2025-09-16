@@ -578,9 +578,24 @@ class client_sessions(models.Model):
     canceled_by = models.CharField(max_length=65, null=True) #trainer, client
     program_type = models.CharField(max_length=65, null=True) #Personal Traing, Group
     group_attendance = models.CharField(max_length=65, null=True) #Attended, Not Attended
+    reschuled = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+class ClientCancel(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, default=1)
+    program_start_date = models.DateField(null=True, blank=True)
+    program_end_date = models.DateField(null=True, blank=True)
+    capacity = models.IntegerField(default = 2)
+    rem_cancel = models.IntegerField(default = 2)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now_add=True, null=True)
+
+
+
+
 
 
 

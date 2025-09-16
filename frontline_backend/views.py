@@ -2,11 +2,11 @@
 
 from rest_framework import generics
 from django.db import models, transaction
-from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField, F
+from django.db.models import Q, OuterRef, Subquery, Exists, Case, When, Value, IntegerField, BooleanField, F, Count, Min
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
-from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram, DailyTasks, TrainerConsultationDetails,client_sessions
+from .models import User, Role, UserRole, Program, Client, ConsulationSchedules, ProgramClient, WeeklyWorkoutUpdates, WeeklyWorkoutwithDaysUpdates, ClienAttendanceUpdates, Country, Leads, LeadsFollowup, weeklydietupdates, MonthlyDietConsultationDetails, DietitianConsultationDetails, BiweeklyUpdations, ClientSubscription, MeetingsTDC, Measurementsclients, MeetingTDCDetails, WeeklyMeeting, SubscriptionPause, ClientPauseLimit, ClientPause, DietchartClient, TrainerMeetingTDCDetails, ReschedulesSessions, MainProgram, DailyTasks, TrainerConsultationDetails,client_sessions, ClientCancel
 from .serializers import UserCreateSerializer, RoleSerializer, UserSerializer, ProgramCreateSerializer, ProgramsSerializer, CustomUserDetailsSerializer, NewClientSerializer, ConsultationScheduleSerializer, TrainerConsultationDataSerializer, ConsultationScheduleWithClientSerializer, ClientSerializer, WeeklyWorkoutSerializer, ProgramClientDaysSerializer, CountrySerializer, LeadCreateSerializer, LeadsSerializer, GroupProgramSerializer, DietitianConsultationDataSerializer, WeeklyDietSerializer, WeeklyDietUpdateSerializer, BiweeklyUpdationsSerializer, MeetingsTDCSerializer, DietitianConsultationDetailsSerializer, MeasurementsclientsSerializer, MeetingTDCDetailsSerializer, WeeklyMeetingSerializer, MeetingTDCDetailswithDietSerializer, ClientWithDietchartSerializer, ClientPauseLimitSerializer, ClientPauseSerializer,TrainerMeetingTDCDetailsSerializer, ReschedulesSessionsSerializer, MainProgramsSerializer, MainProgramCreateSerializer, TasksSerializer, SessionSerializer, GroupSessionSerializer
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.permissions import IsAuthenticated
@@ -416,6 +416,10 @@ class DietitianConsultationDetailsView(APIView):
                 subscription.program_end_date = end_date
                 subscription.save()
 
+                client.program_start_date = start_date
+                client.program_end_date = end_date
+                client.save()
+
                 # Sessions calculating
                 program_client = ProgramClient.objects.filter(client=client).latest('id')
                 workout_days = program_client.workout_days  # e.g. ["sunday", "tuesday", "thursday"]
@@ -484,6 +488,20 @@ class DietitianConsultationDetailsView(APIView):
 
                     return Response({'message': 'Meeting status updated successfully (no new meetings created).'}, status=status.HTTP_200_OK)
 
+                #client pausing capacity & monthly data
+                current_start = start_date
+                while current_start <= end_date:
+                    current_end = current_start + timedelta(days=29)
+                    if current_end > end_date:
+                        current_end = end_date
+
+                    ClientCancel.objects.create(
+                        client = client,
+                        program_start_date = current_start,
+                        program_end_date = current_end
+                    )
+                    current_start = current_end + timedelta(days=1)
+                    
                 # Proceed to create new meetings
                 if program_type == 'Personal Training':
                     base_days = [1, 3, 10]
@@ -3243,19 +3261,53 @@ class ClientCreateView(APIView):
                     status = data.get('status'),
                 )
 
+              
+
                 # 3. Create ProgramClient entry
                 program = Program.objects.get(id=data.get('program_name'))  # or raise 404
+
+                preferred_time = data.get('preferred_time')
+                preferred_days = data.get('preferred_days')
+
+                if preferred_time:
+                    try:
+                        preferred_time = json.loads(preferred_time)
+                    except json.JSONDecodeError:
+                        preferred_time = []
+
+                if preferred_days:
+                    try:
+                        preferred_days = json.loads(preferred_days)
+                    except json.JSONDecodeError:
+                        preferred_days = []
 
                 ProgramClient.objects.create(
                     client=client,
                     program=program,
                     program_type=data.get('program_type'),
-                    preferred_time=data.get('preferred_time'),
-                    workout_days=data.get('preferred_days'),
+                    preferred_time=preferred_time,
+                    workout_days=preferred_days,
                     status="active",
                     trainer_id=data.get('trainer_id'),
                     dietitian_id=data.get('dietitian_id')
                 )
+
+                count = ClientSubscription.objects.count() + 1  # +1 for the next one
+                subscription_id = f"CLN{str(count).zfill(3)}"
+
+                ClientSubscription.objects.create(
+                    client=client,
+                    program=program,
+                    program_months=data.get('program_month'),
+                    program_start_date=data.get('program_start_date'),
+                    program_end_date=data.get('program_end_date'),
+                    amount=data.get('amount'),
+                    subscription_type='new',
+                    subscription_id=subscription_id,  # ✅ Set the new formatted ID
+                    program_type = data.get('program_type'),
+                )
+
+
 
                 # 4. Optionally mark lead as converted (if lead exists)
                 # Leads.objects.filter(email=data.get('email')).update(client=client, status='Converted')
@@ -3459,9 +3511,52 @@ class updateDailySessionsView(APIView):
                         session_no=last_session_no + 1,
                         completed=False,
                         canceled=False,
-                        session_date=next_date
+                        session_date=next_date,
+                        program_type = program.program_type
                     )
+                elif canceled_by == 'Client':
+                    client = session.client
+                    target_date = session.session_date
+                    client_cancel = ClientCancel.objects.filter(
+                        program_start_date__lte=target_date,
+                        program_end_date__gte=target_date
+                    ).first()
+                    client_cancel_count = client_cancel.rem_cancel
 
+                    if(client_cancel_count > 0):
+                        try:
+                            program = ProgramClient.objects.filter(client=client).latest("id")
+                        except ProgramClient.DoesNotExist:
+                            return Response({"error": "No Program found for this client"}, status=status.HTTP_404_NOT_FOUND)
+                        
+                        last_session_no = client_sessions.objects.filter(client=client).order_by("-session_no").first().session_no
+                        # find next session_date based on workout_days
+                        from datetime import timedelta
+
+                        workout_days = program.workout_days or []  # e.g. ["sunday", "tuesday"]
+                        workout_days = [day.lower() for day in workout_days]
+
+                        
+                        last_session = client_sessions.objects.filter(client=client).order_by("-session_no").first()
+                        last_session_no = last_session.session_no
+                        last_session_date = last_session.session_date
+                        next_date = last_session_date
+
+                        while True:
+                            next_date += timedelta(days=1)
+                            if next_date.strftime("%A").lower() in workout_days:
+                                break
+
+                        client_sessions.objects.create(
+                            client=client,
+                            User=session.User,
+                            session_no=last_session_no + 1,
+                            completed=False,
+                            canceled=False,
+                            session_date=next_date,
+                            reschuled = True,
+                            program_type = program.program_type
+                        )
 
                 session.completed = 1
                 session.canceled = 1
@@ -3776,14 +3871,58 @@ class trainerGroupListView(APIView):
         serializer = ProgramsSerializer(programs, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+# class fetchClientSessionsView(APIView):
+#     permission_classes = [IsAuthenticated]
+
+#     def get(self, request, client_id):
+#         user = request.user.id
+#         today = date.today()
+
+#         tasks = client_sessions.objects.filter(client_id=client_id).order_by('session_no')  # DESC order = LIFO
+#         serializer = SessionSerializer(tasks, many=True)
+#         return Response(serializer.data)
+
 class fetchClientSessionsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, client_id):
-        user = request.user.id
         today = date.today()
 
-        tasks = client_sessions.objects.filter(client_id=client_id).order_by('session_no')  # DESC order = LIFO
-        serializer = SessionSerializer(tasks, many=True)
-        return Response(serializer.data)
+        # 1️⃣ Distinct sessions by session_no → take the first record per session_no
+        distinct_ids = (
+            client_sessions.objects.filter(client_id=client_id, reschuled=0)
+            .values('session_no')
+            .annotate(min_id=Min('id'))   # pick the first inserted row
+            .values_list('min_id', flat=True)
+        )
+        distinct_sessions = client_sessions.objects.filter(id__in=distinct_ids).order_by('session_no')
 
+        # 2️⃣ Repeated sessions → session_no that occur more than once
+        repeated_session_nos = (
+            client_sessions.objects.filter(client_id=client_id)
+            .values('session_no')
+            .annotate(count=Count('id'))
+            .filter(count__gt=1)
+            .values_list('session_no', flat=True)
+        )
+        repeated_sessions = client_sessions.objects.filter(
+            client_id=client_id,
+            session_no__in=repeated_session_nos
+        ).order_by('session_no')
+
+        # 3️⃣ Rescheduled sessions
+        rescheduled_sessions = client_sessions.objects.filter(
+            client_id=client_id,
+            reschuled=1
+        ).order_by('session_no')
+
+        # Serialize results
+        distinct_serializer = SessionSerializer(distinct_sessions, many=True)
+        repeated_serializer = SessionSerializer(repeated_sessions, many=True)
+        rescheduled_serializer = SessionSerializer(rescheduled_sessions, many=True)
+
+        return Response({
+            "distinct_sessions": distinct_serializer.data,
+            "repeated_sessions": repeated_serializer.data,
+            "rescheduled_sessions": rescheduled_serializer.data,
+        })
